@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "@fontsource-variable/bricolage-grotesque";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens. Every colour used by components comes from these variables so
+ * light/dark mode is a single class swap on <html>.
+ */
+:root {
+  --bg: #f7f3ec;
+  --bg-glow-1: rgb(255 106 61 / 0.14);
+  --bg-glow-2: rgb(217 54 122 / 0.1);
+  --surface: rgb(255 255 255 / 0.78);
+  --surface-strong: #ffffff;
+  --surface-muted: #f1ebe2;
+  --border: rgb(41 30 20 / 0.1);
+  --border-strong: rgb(41 30 20 / 0.2);
+  --fg: #1d1712;
+  --fg-muted: #6b5f55;
+  --fg-subtle: #8f8378;
+  --ring: #e2522c;
+  --brand-1: #ff6a3d;
+  --brand-2: #d9367a;
+  --brand-fg: #b8401b;
+  --danger: #b42318;
+  --danger-bg: #fdecea;
+  --success: #067647;
+  --shadow-color: 32 20 10;
+}
+
+.dark {
+  --bg: #0f0d13;
+  --bg-glow-1: rgb(255 106 61 / 0.12);
+  --bg-glow-2: rgb(217 54 122 / 0.12);
+  --surface: rgb(27 24 33 / 0.78);
+  --surface-strong: #1c1922;
+  --surface-muted: #24202c;
+  --border: rgb(255 255 255 / 0.08);
+  --border-strong: rgb(255 255 255 / 0.16);
+  --fg: #f3eee8;
+  --fg-muted: #b3aaa1;
+  --fg-subtle: #8a8179;
+  --ring: #ff8a63;
+  --brand-fg: #ff9b78;
+  --danger: #ff8f84;
+  --danger-bg: rgb(180 35 24 / 0.18);
+  --success: #5fe0a6;
+  --shadow-color: 0 0 0;
+}
+
+@theme inline {
+  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-ring: var(--ring);
+  --color-brand-1: var(--brand-1);
+  --color-brand-2: var(--brand-2);
+  --color-brand-fg: var(--brand-fg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-success: var(--success);
+
+  --shadow-soft: 0 1px 2px rgb(var(--shadow-color) / 0.06), 0 4px 16px -4px rgb(var(--shadow-color) / 0.1);
+  --shadow-lift: 0 2px 4px rgb(var(--shadow-color) / 0.08), 0 16px 32px -12px rgb(var(--shadow-color) / 0.22);
+
+  --animate-enter: enter 200ms ease-out both;
+  --animate-page: page 300ms ease-out both;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-flash: flash 1.2s ease-out both;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes page {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes flash {
+  from {
+    background-color: rgb(255 106 61 / 0.22);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply min-h-dvh bg-bg font-sans text-fg antialiased;
+    background-image:
+      radial-gradient(60rem 40rem at 110% -10%, var(--bg-glow-1), transparent 60%),
+      radial-gradient(50rem 36rem at -10% 110%, var(--bg-glow-2), transparent 60%);
+    background-attachment: fixed;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight;
+  }
+  ::selection {
+    background: rgb(255 106 61 / 0.3);
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+  dialog::backdrop {
+    background: rgb(15 10 20 / 0.45);
+    backdrop-filter: blur(4px);
+  }
+}
+
+@layer components {
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface-muted) 25%, var(--border) 50%, var(--surface-muted) 75%);
+    background-size: 200% 100%;
+    @apply animate-shimmer rounded-md;
+  }
+  /* Deepened ends of the brand ramp so white text on it stays >= 4.5:1 (WCAG AA). */
+  .brand-gradient {
+    background-image: linear-gradient(135deg, #d03d12, #c42a6c);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

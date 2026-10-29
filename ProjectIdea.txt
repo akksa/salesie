@@ -1,0 +1,14 @@
+Salesie: an AI salesperson that turns Facebook, Instagram and WhatsApp engagement into sales.
+
+Small businesses sell through social media, but the sale often stops at the comment section. Comments go unanswered, DMs sit for hours, and there’s no CRM tracking who was interested in what. I see this firsthand with businesses around me that have plenty of engagement and few conversions.
+
+Salesie connects a business’s Facebook Page, Instagram account and WhatsApp Business number to a lightweight AI-native CRM:
+
+Post-to-product mapping: When the business publishes a post, SAM 3.1 segments the product in the image and Muse Spark reads the image and caption. Together they match the post to an existing catalog item or create a new one with name, attributes and price.
+Lead capture: Webhooks pick up Facebook comments and reactions, Instagram comments and DMs, and WhatsApp messages. Each person becomes a contact linked to the post and product they engaged with.
+AI sales agent: A Muse Spark agent with tool calling starts the conversation through an Instagram private reply, Messenger or WhatsApp. It answers questions from the catalog, qualifies the lead, handles objections, then sends a payment link or books a meeting. Every step updates the deal stage in the CRM.
+Owner dashboard: A pipeline view shows which post, channel and conversation produced each sale. The owner can take over any chat.
+
+10-day plan: CRM schema and UI (days 1–2), Meta webhooks for all three channels (days 3–4), product mapping (days 5–6), agent and its tools (days 7–8), dashboard and demo (days 9–10). I’ll build with Muse Code to move faster. I designed it within the real Meta API limits: the 7-day private-reply window on Instagram, WhatsApp’s 24-hour messaging window and template messages, and no WhatsApp Status API.
+
+Impact: any small business that sells on Meta’s platforms gets a salesperson that answers in seconds and never forgets a lead.
