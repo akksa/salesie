@@ -1,12 +1,18 @@
 import { Menu, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router";
+import { SkeletonRows } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/cn";
 import { BrandMark, Sidebar } from "./Sidebar";
 
-/** Inbox switches threads inside one page, so it keeps a stable key (no re-enter animation). */
+/**
+ * Pages that open sub-views by URL (inbox threads, the deal drawer over the
+ * pipeline) keep a stable key, so they aren't remounted and re-animated.
+ */
 function pageKey(pathname: string): string {
-  return pathname.startsWith("/inbox") ? "/inbox" : pathname;
+  if (pathname.startsWith("/inbox")) return "/inbox";
+  if (pathname === "/" || pathname.startsWith("/deals")) return "/pipeline";
+  return pathname;
 }
 
 function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -91,7 +97,9 @@ export function AppShell() {
 
       <main id="main" className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
         <div key={pageKey(location.pathname)} className="animate-page">
-          <Outlet />
+          <Suspense fallback={<SkeletonRows rows={4} />}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
     </div>

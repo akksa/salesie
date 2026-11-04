@@ -4,7 +4,7 @@ from sqlalchemy import select
 from app.agent.runner import AgentServices
 from app.api.deps import BusinessDep, IdPath, SessionDep, require_owner
 from app.crm import queries
-from app.models import AgentRun, Conversation
+from app.models import PAUSED_BY_OWNER, Actor, AgentRun, Conversation
 from app.schemas import AgentRunOut, AgentStatusOut, ConversationListItem, ConversationUpdate
 
 router = APIRouter(prefix="/api", tags=["agent"], dependencies=[Depends(require_owner)])
@@ -44,7 +44,8 @@ async def update_conversation(
     conversation = await _owned_conversation(session, business.id, conversation_id)
     if body.agent_paused is not None:
         conversation.agent_paused = body.agent_paused
-        conversation.paused_reason = "paused by the owner" if body.agent_paused else None
+        conversation.paused_by = Actor.OWNER if body.agent_paused else None
+        conversation.paused_reason = PAUSED_BY_OWNER if body.agent_paused else None
     await session.commit()
     items = await queries.list_conversations(session, business.id, contact_id=conversation.contact_id)
     return next(item for item in items if item.id == conversation_id)

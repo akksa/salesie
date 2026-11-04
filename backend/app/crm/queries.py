@@ -66,8 +66,8 @@ async def list_deals(
     if contact_id is not None:
         query = query.where(Deal.contact_id == contact_id)
     rows = (await session.execute(query)).all()
-    names = await _contact_names(session, {deal.contact_id for deal, _ in rows})
-    return [_deal_out(deal, product_name, names[deal.contact_id]) for deal, product_name in rows]
+    names = await contact_names(session, {deal.contact_id for deal, _ in rows})
+    return [deal_out(deal, product_name, names[deal.contact_id]) for deal, product_name in rows]
 
 
 async def list_conversations(
@@ -90,7 +90,7 @@ async def list_conversations(
         .order_by(Message.conversation_id, Message.sent_at.desc(), Message.id.desc())
     )
     last_by_conversation = {m.conversation_id: m for m in latest}
-    names = await _contact_names(session, {c.contact_id for c in conversations})
+    names = await contact_names(session, {c.contact_id for c in conversations})
     return [_conversation_item(c, names[c.contact_id], last_by_conversation.get(c.id)) for c in conversations]
 
 
@@ -107,7 +107,7 @@ async def get_conversation(
             .order_by(Message.sent_at, Message.id)
         )
     )
-    names = await _contact_names(session, {conversation.contact_id})
+    names = await contact_names(session, {conversation.contact_id})
     item = _conversation_item(
         conversation, names[conversation.contact_id], messages[-1] if messages else None
     )
@@ -130,7 +130,7 @@ async def _contact_items(session: AsyncSession, contacts: Sequence[Contact]) -> 
                 id=contact.id,
                 display_name=name,
                 identities=[IdentityOut.model_validate(i) for i in identities[contact.id]],
-                latest_deal=_deal_out(deal[0], deal[1], name) if deal else None,
+                latest_deal=deal_out(deal[0], deal[1], name) if deal else None,
                 last_activity_at=contact.last_activity_at,
                 created_at=contact.created_at,
             )
@@ -150,7 +150,7 @@ async def _identities(session: AsyncSession, contact_ids: Sequence[int]) -> dict
     return grouped
 
 
-async def _contact_names(session: AsyncSession, contact_ids: set[int]) -> dict[int, str]:
+async def contact_names(session: AsyncSession, contact_ids: set[int]) -> dict[int, str]:
     contacts = await session.scalars(select(Contact).where(Contact.id.in_(contact_ids)))
     identities = await _identities(session, list(contact_ids))
     return {c.id: display_name(c, identities[c.id]) for c in contacts}
@@ -169,7 +169,7 @@ async def _latest_deals(
     return {deal.contact_id: (deal, product_name) for deal, product_name in rows}
 
 
-def _deal_out(deal: Deal, product_name: str | None, contact_name: str) -> DealOut:
+def deal_out(deal: Deal, product_name: str | None, contact_name: str) -> DealOut:
     return DealOut(
         id=deal.id,
         contact_id=deal.contact_id,
@@ -195,6 +195,7 @@ def _conversation_item(
         contact_name=contact_name,
         channel=conversation.channel,
         agent_paused=conversation.agent_paused,
+        paused_by=conversation.paused_by,
         paused_reason=conversation.paused_reason,
         last_inbound_at=conversation.last_inbound_at,
         last_message=MessageOut.model_validate(last) if last else None,

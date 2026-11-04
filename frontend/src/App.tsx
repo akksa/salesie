@@ -1,20 +1,38 @@
-import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
+import { lazy } from "react";
+import { createBrowserRouter, RouterProvider } from "react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { NotFound } from "@/components/NotFound";
-import { CatalogPage } from "@/features/catalog/CatalogPage";
 import { ContactDetailPage } from "@/features/contacts/ContactDetailPage";
 import { ContactsPage } from "@/features/contacts/ContactsPage";
 import { InboxPage } from "@/features/inbox/InboxPage";
-import { PostsPage } from "@/features/posts/PostsPage";
-import { SettingsPage } from "@/features/settings/SettingsPage";
-import { SimulatorPage } from "@/features/simulator/SimulatorPage";
+import { PipelinePage } from "@/features/pipeline/PipelinePage";
+
+// Heavier, less-visited pages load on demand (AppShell wraps the outlet in <Suspense>).
+const InsightsPage = lazy(() =>
+  import("@/features/insights/InsightsPage").then((m) => ({ default: m.InsightsPage })),
+);
+const SimulatorPage = lazy(() =>
+  import("@/features/simulator/SimulatorPage").then((m) => ({ default: m.SimulatorPage })),
+);
+
+const CatalogPage = lazy(() =>
+  import("@/features/catalog/CatalogPage").then((m) => ({ default: m.CatalogPage })),
+);
+
+const PostsPage = lazy(() => import("@/features/posts/PostsPage").then((m) => ({ default: m.PostsPage })));
+
+const SettingsPage = lazy(() =>
+  import("@/features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })),
+);
 
 const router = createBrowserRouter([
   {
     path: "/",
     element: <AppShell />,
     children: [
-      { index: true, element: <Navigate to="/contacts" replace /> },
+      { index: true, element: <PipelinePage /> },
+      { path: "deals/:dealId", element: <PipelinePage /> },
+      { path: "insights", element: <InsightsPage /> },
       { path: "contacts", element: <ContactsPage /> },
       { path: "contacts/:contactId", element: <ContactDetailPage /> },
       { path: "inbox", element: <InboxPage /> },

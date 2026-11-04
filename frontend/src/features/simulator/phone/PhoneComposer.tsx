@@ -23,7 +23,7 @@ function ModeSwitch({ mode, onChange }: { mode: ComposeMode; onChange: (mode: Co
             "flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-full px-2 py-1 font-medium text-fg-muted",
             "transition-[background-color,color,box-shadow] duration-200 hover:text-fg",
             "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ring",
-            mode === value && "bg-surface-strong text-fg shadow-soft",
+            mode === value && "bg-fg text-bg shadow-soft hover:text-bg",
           )}
         >
           <input
@@ -105,7 +105,7 @@ export function PhoneComposer({
           type="submit"
           disabled={!canSend}
           aria-label={mode === "dm" ? "Send message" : "Post comment"}
-          className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-linear-to-br from-violet-600 to-fuchsia-600 text-white shadow-soft transition-[transform,opacity] duration-200 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+          className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-linear-to-br from-violet-600 to-fuchsia-600 text-white shadow-soft transition-[transform,opacity] duration-200 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:bg-none disabled:bg-surface-muted disabled:text-fg-subtle disabled:shadow-none disabled:hover:scale-100"
         >
           <ArrowUp className="size-4" aria-hidden />
         </button>

@@ -7,12 +7,16 @@ import { cn } from "@/lib/cn";
 import { formatAbsolute, formatRelative } from "@/lib/format";
 import { previewText } from "./messageUtils";
 
-export const OWNER_PAUSE_REASON = "paused by the owner";
+/** The agent handed the chat over (refund, complaint, a question it couldn't answer). */
+export function isHandoff(conversation: Pick<ConversationListItem, "paused_by">): boolean {
+  return conversation.paused_by === "agent";
+}
 
-/** "Needs you" when the agent handed off; "Agent paused" when the owner paused it. */
-export function PausedBadge({ reason }: { reason: string | null }) {
-  const handedOff = reason !== null && reason !== OWNER_PAUSE_REASON;
+/** "Needs you" when the agent handed off; "Agent paused" when you paused it or took over. */
+export function PausedBadge({ conversation }: { conversation: ConversationListItem }) {
+  const handedOff = isHandoff(conversation);
   const Icon = handedOff ? Hand : CirclePause;
+  const reason = conversation.paused_reason;
   return (
     <span
       title={reason ? `Agent paused: ${reason}` : "The AI agent is paused for this conversation"}
@@ -61,11 +65,11 @@ export function ConversationItem({
           </time>
         </span>
         <span className="mt-0.5 line-clamp-2 block text-xs break-words text-fg-muted">
-          {previewText(conversation.last_message, conversation.contact_name)}
+          {previewText(conversation.last_message)}
         </span>
         {conversation.agent_paused ? (
           <span className="mt-1.5 block">
-            <PausedBadge reason={conversation.paused_reason} />
+            <PausedBadge conversation={conversation} />
           </span>
         ) : null}
       </span>

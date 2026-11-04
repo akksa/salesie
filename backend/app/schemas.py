@@ -6,6 +6,7 @@ from typing import Annotated, Any
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.models import (
+    Actor,
     AgentRunStatus,
     AgentTrigger,
     Author,
@@ -13,6 +14,7 @@ from app.models import (
     DealStage,
     Direction,
     EngagementKind,
+    PaymentStatus,
     ProductStatus,
     WebhookStatus,
 )
@@ -212,6 +214,7 @@ class ConversationListItem(BaseModel):
     contact_name: str
     channel: Channel
     agent_paused: bool
+    paused_by: Actor | None  # "owner": you're handling it; "agent": it handed the chat to you
     paused_reason: str | None
     last_inbound_at: datetime | None
     last_message: MessageOut | None
@@ -285,3 +288,121 @@ class SimulatedCommentIn(In):
 class SimulatedDirectMessageIn(In):
     username: InstagramUsername
     text: str = Field(min_length=1, max_length=1000)
+
+
+# --- phase 5: pipeline, deal detail, taking over a chat, insights -----------------------------------
+
+
+def _fits_instagram(value: str) -> str:
+    if len(value.encode("utf-8")) > 1000:
+        raise ValueError(
+            "too long for Instagram: at most 1000 bytes (emoji and accents count double or more)"
+        )
+    return value
+
+
+class OwnerMessageIn(In):
+    text: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1), AfterValidator(_fits_instagram)
+    ]
+
+
+class DealUpdate(Patch):
+    """The owner moves a deal by hand (e.g. paid in cash, or lost). Any stage, in any direction."""
+
+    _not_nullable = frozenset({"stage"})
+
+    stage: DealStage | None = None
+    amount_minor: Money | None = Field(default=None, description="Set the deal value, e.g. for a cash sale")
+
+
+class StageChangeOut(Out):
+    from_stage: DealStage | None
+    to_stage: DealStage
+    actor: Actor
+    reason: str | None
+    created_at: datetime
+
+
+class PaymentLinkOut(Out):
+    id: int
+    status: PaymentStatus
+    quantity: int
+    amount_minor: int
+    currency: str
+    url: str
+    created_at: datetime
+    paid_at: datetime | None
+
+
+class PostBrief(Out):
+    id: int
+    external_id: str
+    caption: str | None
+    image_url: str | None
+    permalink: str | None
+
+
+class PipelineCard(DealOut):
+    conversation_id: int | None
+    agent_paused: bool
+    needs_owner: bool  # the agent handed this chat over (refund, complaint, a question it couldn't answer)
+    source_post: PostBrief | None
+    last_message: str | None
+    last_message_author: Author | None
+    last_activity_at: datetime | None
+
+
+class PipelineColumn(BaseModel):
+    stage: DealStage
+    count: int
+    amount_minor: int
+    deals: list[PipelineCard]
+
+
+class PipelineOut(BaseModel):
+    currency: str
+    columns: list[PipelineColumn]
+    needs_owner: int  # chats the agent handed over that are waiting for the owner
+
+
+class DealDetail(PipelineCard):
+    stage_changes: list[StageChangeOut]
+    payment_links: list[PaymentLinkOut]
+
+
+class FunnelStep(BaseModel):
+    stage: DealStage
+    reached: int  # deals that got at least this far
+
+
+class PostPerformance(BaseModel):
+    post: PostBrief
+    product_name: str | None
+    leads: int
+    deals: int
+    won: int
+    revenue_minor: int
+
+
+class ChannelPerformance(BaseModel):
+    channel: Channel
+    deals: int
+    won: int
+    revenue_minor: int
+
+
+class InsightsOut(BaseModel):
+    currency: str
+    days: int
+    leads: int
+    deals: int
+    won: int
+    revenue_minor: int
+    conversion_rate: float | None  # won / deals opened in the period
+    agent_replies: int
+    median_agent_reply_seconds: float | None  # time the agent took to answer, from its run log
+    handoffs: int
+    funnel: list[FunnelStep]
+    by_post: list[PostPerformance]
+    by_channel: list[ChannelPerformance]

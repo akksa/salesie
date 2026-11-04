@@ -36,6 +36,7 @@ from app.crm.contacts import display_name, record_activity
 from app.crm.store import get_or_create, lock_agent_turn
 from app.models import (
     OPEN_STAGES,
+    Actor,
     AgentRun,
     AgentRunStatus,
     AgentTrigger,
@@ -59,9 +60,22 @@ logger = logging.getLogger(__name__)
 MAX_STEPS = 6
 HOLDING_MESSAGE = "Thanks for your message! The owner will get back to you here shortly."
 MAX_FOLLOW_UPS = 2  # extra turns for messages that arrive while the model is thinking
-# Anything a shopper's app would turn into a link: scheme://..., www...., or a bare domain like evil.example/x
-_LINKISH = re.compile(r"(?i)\b(?:[a-z][a-z0-9+.-]*://|www\.)\S+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/\S*)?")
+# Anything a shopper's app would turn into a link: scheme://..., www...., a domain with a path
+# (evil.example/pay), or a bare domain with a common TLD. Instagram handles like "fay.loves" are left alone.
+_COMMON_TLDS = (
+    "com|net|org|io|co|app|shop|store|online|site|xyz|info|biz|me|ly|link|click|top|live|pay|money|"
+    "in|uk|us|ru|cn|de|fr|br|au|ca|nl|ai|dev|tk|ml|ga|cf|gq|ws|cc|tv|gl|to|sh|gg|su|vip|win|bid|icu"
+)
+_LINKISH = re.compile(
+    r"(?i)\b(?:[a-z][a-z0-9+.-]*://|www\.)\S+"
+    r"|\b(?:[a-z0-9-]+\.)+[a-z]{2,}/\S*"
+    rf"|(?<![@\w.])\b(?:[a-z0-9-]+\.)+(?:{_COMMON_TLDS})\b(?![.\w])"
+)
 _COVERED = (AgentRunStatus.REPLIED, AgentRunStatus.HANDED_OFF, AgentRunStatus.SKIPPED)
+
+
+class _SupersededError(Exception):
+    """The chat was paused (the owner took over) during the turn: undo it all and send nothing."""
 
 
 @dataclass(frozen=True)
@@ -146,6 +160,12 @@ async def _turn(
     try:
         async with sessionmaker() as session, session.begin():
             return await _respond(session, services, request, started)
+    except _SupersededError:  # everything the turn did was rolled back; nothing was sent
+        async with sessionmaker() as session, session.begin():
+            error = "the owner took over while the agent was thinking; nothing was sent"
+            run = _run(request, services.llm, AgentRunStatus.SKIPPED, started, error=error)
+            session.add(run)
+        return run
     except Exception as exc:  # recorded as a failed run below; full traceback in the log
         logger.exception("agent run for contact %s failed", request.contact_id)
         error = (
@@ -205,6 +225,7 @@ async def _over_budget(
         {"business_id": shopper.business.id, "contact_id": shopper.contact.id, "channel": Channel.INSTAGRAM},
     )
     conversation.agent_paused = True
+    conversation.paused_by = Actor.AGENT
     conversation.paused_reason = "unusually many messages today: please check this chat"
     run = _run(
         request,
@@ -287,12 +308,15 @@ async def _deliver(
         run.last_seen_message_id = seen
         session.add(run)
         return run
-    await tools.lock()  # final writes under the contact lock, like ingestion
+    await tools.lock()  # final writes under the contact lock, like ingestion and the owner
     conversation, _ = await get_or_create(
         session,
         Conversation,
         {"business_id": shopper.business.id, "contact_id": shopper.contact.id, "channel": Channel.INSTAGRAM},
     )
+    await session.refresh(conversation)  # the owner may have taken over while the model was thinking
+    if conversation.agent_paused:
+        raise _SupersededError
     run = _run(
         request, services.llm, outcome.status, started, steps=outcome.steps, reply=reply, error=outcome.error
     )
@@ -316,10 +340,12 @@ async def _deliver(
         shopper.engagement.private_reply_at = now
     if tools.handoff_reason:
         conversation.agent_paused = True
+        conversation.paused_by = Actor.AGENT
         conversation.paused_reason = clean_text(tools.handoff_reason)[:500]
     await session.flush()  # any database error surfaces here, before the shopper receives anything
     sender = services.sender_for(shopper.identity)
     message.external_id = await sender.send_text(shopper.business.ig_account_id or "", route, reply)
+    run.finished_at = datetime.now(UTC)  # reply time includes the send
     return run
 
 
@@ -336,7 +362,7 @@ def final_text(text: str, payment_link: str | None) -> str:
 
 
 async def notify_shopper(
-    session: AsyncSession, services: AgentServices, contact_id: int, text: str
+    session: AsyncSession, services: AgentServices, contact_id: int, text: str, *, real_shopper_note: str = ""
 ) -> Message | None:
     """Send a templated message (e.g. a payment receipt) inside the 24-hour window, if it's open."""
     conversation = await session.scalar(
@@ -365,7 +391,7 @@ async def notify_shopper(
         conversation_id=conversation.id,
         direction=Direction.OUTBOUND,
         author=Author.AGENT,
-        text=fit_message(text),
+        text=fit_message(text if identity.simulated else f"{text}{real_shopper_note}"),
         sent_at=now,
     )
     session.add(message)

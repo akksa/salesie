@@ -49,4 +49,4 @@ known-third-party = ["alembic"]
 
 [tool.coverage.run]
 concurrency = ["greenlet", "thread"]
-omit = ["app/seed.py"]
+omit = ["app/seed.py", "app/demo.py"]

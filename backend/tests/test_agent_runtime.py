@@ -40,14 +40,20 @@ class ScriptedModel:
 class SpySender:
     def __init__(self) -> None:
         self.sent: list[tuple[str, Recipient, str]] = []
+        self.tags: list[str | None] = []
+        self._count = 0  # Meta's message ids are unique: keep counting even if a test clears `sent`
 
     @property
     def mode(self) -> str:
         return "live"
 
-    async def send_text(self, account_id: str, recipient: Recipient, text: str) -> str:
+    async def send_text(
+        self, account_id: str, recipient: Recipient, text: str, tag: str | None = None
+    ) -> str:
         self.sent.append((account_id, recipient, text))
-        return f"mid.live.{len(self.sent)}"
+        self.tags.append(tag)
+        self._count += 1
+        return f"mid.live.{self._count}"
 
 
 def call(name: str, **arguments: object) -> AssistantTurn:

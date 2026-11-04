@@ -8,6 +8,7 @@ import { useAgentRuns } from "@/features/agent/api";
 import { useContact } from "@/features/contacts/api";
 import { usePosts } from "@/features/posts/api";
 import { useConversation } from "./api";
+import { Composer } from "./Composer";
 import { ThreadHeader } from "./ThreadHeader";
 import { ThreadTimeline } from "./ThreadTimeline";
 import { buildTimeline } from "./timeline";
@@ -75,6 +76,7 @@ function Thread({ conversationId }: { conversationId: number }) {
         ) : null}
         <div ref={endRef} />
       </div>
+      {data ? <Composer conversationId={data.id} agentPaused={data.agent_paused} /> : null}
     </div>
   );
 }

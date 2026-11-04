@@ -92,10 +92,8 @@ export function formatTime(iso: string | null | undefined): string {
 }
 
 export function initials(name: string): string {
-  const parts = name
-    .replace(/^@/, "")
-    .split(/[\s._-]+/)
-    .filter(Boolean);
+  // Letters/digits only: "Bloom & Thread" -> "BT", "@linen.lover22" -> "LL".
+  const parts = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   const letters = parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "");
   return letters.join("") || "?";
 }
@@ -107,4 +105,12 @@ export function attributeToText(value: unknown): string {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (Array.isArray(value)) return value.map(attributeToText).join(", ");
   return JSON.stringify(value);
+}
+
+/** Server details are often lowercase fragments ("the shopper paid…"); show them as sentences. */
+export function toSentence(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  const capitalised = trimmed[0]?.toUpperCase() + trimmed.slice(1);
+  return /[.!?]$/.test(capitalised) ? capitalised : `${capitalised}.`;
 }

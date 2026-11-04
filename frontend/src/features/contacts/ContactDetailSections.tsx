@@ -1,4 +1,5 @@
-import { Heart, MessageCircle } from "lucide-react";
+import { ArrowRight, Heart, MessageCircle } from "lucide-react";
+import { Link } from "react-router";
 import type { ConversationListItem, DealOut, EngagementOut, PostOut } from "@/api/types";
 import { ChannelIcon } from "@/components/ChannelIcon";
 import { DealDetailChips } from "@/components/DealDetails";
@@ -98,7 +99,13 @@ export function DealList({
             <p className="font-medium">
               {deal.product_name ?? <span className="text-fg-subtle">No product linked</span>}
             </p>
-            <DealDetailChips details={deal.details} />
+            <DealDetailChips details={deal.details} size="md" />
+            <Link
+              to={`/deals/${deal.id}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-brand-fg underline-offset-2 hover:underline"
+            >
+              Open deal <ArrowRight className="size-3" aria-hidden />
+            </Link>
             <p className="flex items-center gap-2 text-xs text-fg-subtle">
               <ChannelIcon channel={deal.channel} size="sm" />
               Updated{" "}

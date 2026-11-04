@@ -1,7 +1,8 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agent.runner import respond_all
 from app.api.deps import BusinessDep, SessionDep, SettingsDep, require_owner
@@ -76,6 +77,7 @@ async def _deliver(
     processed = await simulator.deliver_simulated(
         sessionmaker, payload, settings.meta_app_secret.get_secret_value()
     )
+    await _remember_handle(sessionmaker, username)
     runs = await respond_all(sessionmaker, request.app.state.agent, processed.replies)  # inline: demo sees it
     contact_id = await session.scalar(
         select(ContactIdentity.contact_id).where(
@@ -99,3 +101,18 @@ async def _deliver(
         conversation_id=conversation_id,
         agent_runs=[AgentRunOut.model_validate(run) for run in runs],
     )
+
+
+async def _remember_handle(sessionmaker: async_sessionmaker[AsyncSession], username: str) -> None:
+    """Real DMs carry no username; Salesie would look it up from the Instagram profile. For a simulated
+    shopper the simulator already knows it, so it records it the same way."""
+    async with sessionmaker() as session, session.begin():
+        await session.execute(
+            update(ContactIdentity)
+            .where(
+                ContactIdentity.external_id == simulator.simulated_user_id(username),
+                ContactIdentity.simulated.is_(True),
+                ContactIdentity.username.is_(None),
+            )
+            .values(username=username)
+        )

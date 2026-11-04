@@ -3,6 +3,7 @@ import type { AgentRunOut } from "@/api/types";
 import { RunSummary } from "@/features/agent/RunDetails";
 import { RunStatusBadge } from "@/features/agent/RunStatusBadge";
 import { runNote } from "@/features/agent/steps";
+import { previewWithoutUrls } from "@/lib/linkify";
 
 /** What the agent did for the last simulated delivery: status, reply and every step. */
 export function AgentRunsPanel({ runs }: { runs: AgentRunOut[] }) {
@@ -13,6 +14,7 @@ export function AgentRunsPanel({ runs }: { runs: AgentRunOut[] }) {
       </p>
     );
   }
+  const latestId = Math.max(...runs.map((run) => run.id));
   return (
     <ul className="mt-3 space-y-2">
       {runs.map((run) => (
@@ -24,16 +26,17 @@ export function AgentRunsPanel({ runs }: { runs: AgentRunOut[] }) {
             </span>
           </div>
           {run.reply_text ? (
-            <p className="mt-2 line-clamp-3 text-sm break-words whitespace-pre-wrap">“{run.reply_text}”</p>
+            <p className="mt-2 line-clamp-3 text-sm break-words">“{previewWithoutUrls(run.reply_text)}”</p>
           ) : null}
           {runNote(run) ? <p className="mt-1 text-xs font-medium text-fg-muted">{runNote(run)}</p> : null}
-          <details className="group/steps mt-2">
+          {/* The latest run opens by itself and plays its steps in, in sync with the phone reply. */}
+          <details className="group/steps mt-2" open={run.id === latestId}>
             <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-semibold text-fg-subtle transition-colors hover:text-brand-fg [&::-webkit-details-marker]:hidden">
               Show the agent's steps
               <ChevronDown className="size-3 transition-transform group-open/steps:rotate-180" aria-hidden />
             </summary>
             <div className="mt-2">
-              <RunSummary run={run} />
+              <RunSummary run={run} stagger={run.id === latestId} header={false} />
             </div>
           </details>
         </li>

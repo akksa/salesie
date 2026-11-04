@@ -204,6 +204,11 @@ class Engagement(Base):
     )
 
 
+# Pause reasons set by the owner (anything else was the agent handing a chat over).
+PAUSED_BY_OWNER = "paused by the owner"
+OWNER_TOOK_OVER = "you took over this chat"
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (UniqueConstraint("business_id", "contact_id", "channel"),)
@@ -214,6 +219,8 @@ class Conversation(Base):
     channel: Mapped[Channel] = mapped_column(_enum(Channel))
     agent_paused: Mapped[bool] = mapped_column(Boolean, default=False)
     paused_reason: Mapped[str | None] = mapped_column(String(500))
+    # Who paused the agent: the owner (handling it), or the agent itself (handed over: needs the owner).
+    paused_by: Mapped[Actor | None] = mapped_column(_enum(Actor))
     last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = _created_at()

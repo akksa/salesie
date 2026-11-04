@@ -61,7 +61,7 @@ async def deal_for_comment(
             contact_id=contact_id,
             channel=channel,
             stage=DealStage.NEW,
-            reason=f"commented on post {post.external_id}",
+            reason=f'commented on "{_snippet(post.caption)}"' if post.caption else "commented on a post",
             post=post,
             product=product,
         )
@@ -116,7 +116,7 @@ async def open_deal(
 
 
 async def change_stage(
-    session: AsyncSession, deal: Deal, to_stage: DealStage, *, actor: Actor, reason: str
+    session: AsyncSession, deal: Deal, to_stage: DealStage, *, actor: Actor, reason: str | None
 ) -> None:
     if deal.stage == to_stage:
         return
@@ -125,3 +125,8 @@ async def change_stage(
     )
     deal.stage = to_stage
     await session.flush()
+
+
+def _snippet(text: str, limit: int = 40) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"

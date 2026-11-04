@@ -8,7 +8,6 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { usePosts } from "@/features/posts/api";
 import { useAppConfig } from "@/features/settings/api";
-import { AgentModelNote } from "./AgentModelNote";
 import { ShopperPhone } from "./phone/ShopperPhone";
 import { type LastSimulation, SimulationResult } from "./SimulationResult";
 import { CommentForm, DmForm } from "./SimulatorForms";
@@ -42,7 +41,6 @@ function BehindTheScenesColumn({ last }: { last: LastSimulation | null }) {
           Send something from the phone to see the agent's run.
         </div>
       )}
-      <AgentModelNote />
     </div>
   );
 }

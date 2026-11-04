@@ -78,7 +78,7 @@ export function runNote(run: AgentRunOut, pausedReason?: string | null): string 
     case "replied":
       return null;
     case "handed_off":
-      return `Handed to you: ${handoffReason(run) ?? pausedReason ?? "needs a person"}`;
+      return `Handed to you · ${handoffReason(run) ?? pausedReason ?? "needs a person"}`;
     case "blocked":
       return `Couldn't reply: ${run.error ?? "Instagram's messaging window doesn't allow it"}`;
     case "failed":
@@ -96,4 +96,18 @@ export function isMockModel(model: string): boolean {
 export function durationMs(run: AgentRunOut): number | null {
   const ms = new Date(run.finished_at).getTime() - new Date(run.started_at).getTime();
   return Number.isFinite(ms) && ms >= 0 ? ms : null;
+}
+
+/**
+ * Human name for a model id, shown once (sidebar). `muse-spark-1.3` / `muse-spark-1-3-…`
+ * → "Muse Spark 1.3 · Meta Model API"; mock ids → "Mock model (no API credits)".
+ */
+export function modelDisplayName(model: string): string {
+  if (isMockModel(model)) return "Mock model (no API credits)";
+  const muse = /^muse-spark(?:-(\d+(?:[.-]\d+)*))?/i.exec(model);
+  if (muse) {
+    const version = muse[1]?.replace(/-/g, ".");
+    return `Muse Spark${version ? ` ${version}` : ""} · Meta Model API`;
+  }
+  return model;
 }

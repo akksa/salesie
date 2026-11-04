@@ -252,6 +252,24 @@ def test_links_and_bare_domains_are_stripped(text: str) -> None:
     assert final_text(text, None) == "Pay at now"
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hi fay.loves! The dress is $68.",
+        "Hi @maya.shops, sizes are XS-XL.",
+        "Thanks ana.styles 😊",
+        "It's 3.5 cm wide, e.g. for keys.",
+    ],
+)
+def test_instagram_handles_and_ordinary_text_are_not_mistaken_for_links(text: str) -> None:
+    assert final_text(text, None) == text
+
+
+@pytest.mark.parametrize("text", ["Pay at evil.com now", "Pay at secure-pay.shop now", "Pay at x.y.co now"])
+def test_bare_domains_with_common_tlds_are_stripped(text: str) -> None:
+    assert final_text(text, None) == "Pay at now"
+
+
 def test_the_real_payment_link_survives_the_filter() -> None:
     link = "http://localhost:8000/pay/REALtoken_123456"
     assert final_text(f"Here you go: {link}.", link) == f"Here you go: {link}."

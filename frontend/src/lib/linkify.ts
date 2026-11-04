@@ -36,7 +36,38 @@ function isPaymentLink(href: string): boolean {
   }
 }
 
-export function paymentLinks(text: string | null): string[] {
-  if (!text) return [];
-  return linkify(text).flatMap((s) => (s.kind === "link" && isPaymentLink(s.href) ? [s.href] : []));
+/**
+ * Splits checkout links out of a message so they can be shown as an "Open checkout"
+ * button instead of a raw URL. Other URLs stay in the text (rendered as links).
+ */
+export function splitPaymentLinks(text: string): { text: string; links: string[] } {
+  const links: string[] = [];
+  const kept = linkify(text)
+    .map((segment) => {
+      if (segment.kind === "link" && isPaymentLink(segment.href)) {
+        links.push(segment.href);
+        return "";
+      }
+      return segment.text;
+    })
+    .join("");
+  const cleaned = kept
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([.,;!?)])/g, "$1") // punctuation that followed the removed URL
+    .replace(/:\s*\.(\s|$)/g, ":$1") // "Pay here: ." -> "Pay here:"
+    .trim();
+  return { text: cleaned, links: [...new Set(links)] };
+}
+
+/** One-line preview with URLs replaced by a label, for lists and cards. */
+export function previewWithoutUrls(text: string): string {
+  return linkify(text)
+    .map((segment) => {
+      if (segment.kind !== "link") return segment.text;
+      return isPaymentLink(segment.href) ? "🔗 Checkout link" : "🔗 Link";
+    })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
 }

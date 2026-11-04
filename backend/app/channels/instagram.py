@@ -4,6 +4,7 @@ Send API: POST {graph}/{ig_account_id}/messages, body {"recipient": {"id": IGSID
 "message": {"text": ...}}, response {"recipient_id", "message_id"}.
 Windows: a DM is allowed within 24 hours of the person's last message; a "private reply" to a comment is
 allowed once, within 7 days of the comment (developers.facebook.com/docs/instagram-platform/private-replies).
+A human (not the agent) may reply up to 7 days after the person's last message with the HUMAN_AGENT tag.
 """
 
 import secrets
@@ -16,6 +17,8 @@ import httpx
 from app.sanitize import redact
 
 DM_WINDOW = timedelta(hours=24)
+HUMAN_AGENT_WINDOW = timedelta(days=7)
+HUMAN_AGENT_TAG = "HUMAN_AGENT"
 PRIVATE_REPLY_WINDOW = timedelta(days=7)
 MAX_TEXT_LENGTH = 1000  # Instagram's text limit; counted in bytes here, which is never longer than characters
 
@@ -42,8 +45,10 @@ class InstagramSender(Protocol):
     @property
     def mode(self) -> Literal["live", "recorded"]: ...
 
-    async def send_text(self, account_id: str, recipient: Recipient, text: str) -> str:
-        """Send and return Meta's message id."""
+    async def send_text(
+        self, account_id: str, recipient: Recipient, text: str, tag: str | None = None
+    ) -> str:
+        """Send and return Meta's message id. `tag` marks e.g. a human agent reply outside 24 hours."""
         ...
 
 
@@ -52,7 +57,9 @@ class RecordingSender:
 
     mode: Literal["recorded"] = "recorded"
 
-    async def send_text(self, account_id: str, recipient: Recipient, text: str) -> str:
+    async def send_text(
+        self, account_id: str, recipient: Recipient, text: str, tag: str | None = None
+    ) -> str:
         return f"rec.{secrets.token_hex(12)}"
 
 
@@ -73,8 +80,12 @@ class GraphSender:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def send_text(self, account_id: str, recipient: Recipient, text: str) -> str:
-        body = {"recipient": recipient.as_json(), "message": {"text": text}}
+    async def send_text(
+        self, account_id: str, recipient: Recipient, text: str, tag: str | None = None
+    ) -> str:
+        body: dict[str, object] = {"recipient": recipient.as_json(), "message": {"text": text}}
+        if tag:
+            body |= {"messaging_type": "MESSAGE_TAG", "tag": tag}
         try:
             response = await self._http.post(f"/{account_id}/messages", json=body)
         except httpx.HTTPError as exc:
@@ -107,6 +118,42 @@ def reply_route(
     if now - comment_at > PRIVATE_REPLY_WINDOW:
         return Blocked("the 7-day private reply window for this comment has passed")
     return Recipient("comment", comment_id)
+
+
+@dataclass(frozen=True)
+class OwnerRoute:
+    recipient: Recipient
+    tag: str | None
+
+
+# Meta's clock and ours can differ: tag human replies a little before the 24 hours are strictly up.
+_TAG_MARGIN = timedelta(minutes=10)
+
+
+def owner_route(
+    *,
+    now: datetime,
+    contact_external_id: str,
+    last_inbound_at: datetime | None,
+    open_comment_id: str | None = None,
+    open_comment_at: datetime | None = None,
+) -> OwnerRoute | Blocked:
+    """When the owner (a person) may message someone: 24 hours after their last DM normally, 7 days with the
+    HUMAN_AGENT tag; someone who only commented can get one private reply within 7 days of the comment."""
+    if last_inbound_at is not None and now - last_inbound_at <= HUMAN_AGENT_WINDOW:
+        tag = None if now - last_inbound_at <= DM_WINDOW - _TAG_MARGIN else HUMAN_AGENT_TAG
+        return OwnerRoute(Recipient("user", contact_external_id), tag)
+    if (
+        open_comment_id is not None
+        and open_comment_at is not None
+        and now - open_comment_at <= PRIVATE_REPLY_WINDOW
+    ):
+        return OwnerRoute(Recipient("comment", open_comment_id), None)
+    if last_inbound_at is None:
+        return Blocked(
+            "this shopper hasn't messaged you, and Instagram only allows replies to people who wrote first"
+        )
+    return Blocked("Instagram only lets you reply within 7 days of the shopper's last message")
 
 
 def utf8_length(text: str) -> int:

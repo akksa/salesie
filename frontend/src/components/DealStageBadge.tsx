@@ -62,3 +62,13 @@ export function DealStageBadge({ stage, className }: { stage: DealStage; classNa
     </span>
   );
 }
+
+/** Solid fill per stage, for places where a shape *is* a stage (column accents, funnel bars). */
+export const STAGE_FILL: Record<DealStage, string> = {
+  new: "bg-slate-400 dark:bg-slate-500",
+  engaged: "bg-sky-500",
+  qualified: "bg-violet-500",
+  payment_sent: "bg-amber-500",
+  won: "bg-emerald-500",
+  lost: "bg-rose-500",
+};

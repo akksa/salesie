@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.agent.factory import build_agent_services
-from app.api import agent, catalog, crm, pay, simulator, webhooks
+from app.api import agent, catalog, crm, dashboard, pay, simulator, webhooks
 from app.api.ratelimit import FailedLoginLimiter
 from app.config import Settings, get_settings
 from app.db import create_engine, create_sessionmaker
@@ -53,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(crm.router)
     app.include_router(simulator.router)
     app.include_router(agent.router)
+    app.include_router(dashboard.router)
     app.include_router(pay.router)
 
     @app.get("/healthz", include_in_schema=False)

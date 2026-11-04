@@ -163,7 +163,9 @@ export interface ConversationListItem {
   contact_name: string;
   channel: Channel;
   agent_paused: boolean;
-  /** Why the agent is paused: a hand-off reason, or "paused by the owner". */
+  /** "agent": it handed the chat to you; "owner": you paused it or took over. */
+  paused_by: Actor | null;
+  /** Human-readable why (hand-off reason, or which owner action). Display only. */
   paused_reason: string | null;
   last_inbound_at: IsoDateTime | null;
   last_message: MessageOut | null;
@@ -250,4 +252,117 @@ export interface ValidationIssue {
   loc: (string | number)[];
   msg: string;
   type?: string;
+}
+
+// --- phase 5: pipeline, deal detail, owner messages, insights ---------------------
+
+export type Actor = "system" | "agent" | "owner";
+export type PaymentStatus = "open" | "paid" | "expired";
+
+export interface OwnerMessageIn {
+  text: string;
+}
+
+/** Either or both. `amount_minor` records e.g. a cash sale. */
+export interface DealUpdate {
+  stage?: DealStage;
+  amount_minor?: number;
+}
+
+export interface StageChangeOut {
+  from_stage: DealStage | null;
+  to_stage: DealStage;
+  actor: Actor;
+  reason: string | null;
+  created_at: IsoDateTime;
+}
+
+export interface PaymentLinkOut {
+  id: number;
+  status: PaymentStatus;
+  quantity: number;
+  amount_minor: number;
+  currency: string;
+  url: string;
+  created_at: IsoDateTime;
+  paid_at: IsoDateTime | null;
+}
+
+export interface PostBrief {
+  id: number;
+  external_id: string;
+  caption: string | null;
+  image_url: string | null;
+  permalink: string | null;
+}
+
+export interface PipelineCard extends DealOut {
+  conversation_id: number | null;
+  agent_paused: boolean;
+  /** The agent handed this chat over (refund, complaint, a question it couldn't answer). */
+  needs_owner: boolean;
+  source_post: PostBrief | null;
+  last_message: string | null;
+  last_message_author: Author | null;
+  last_activity_at: IsoDateTime | null;
+}
+
+export interface PipelineColumn {
+  stage: DealStage;
+  count: number;
+  amount_minor: number;
+  deals: PipelineCard[];
+}
+
+export interface PipelineOut {
+  currency: string;
+  /** Chats the agent handed over that are waiting for the owner. */
+  needs_owner: number;
+  /** count/amount_minor cover every deal; `deals` holds at most 100 per column, newest first. */
+  columns: PipelineColumn[];
+}
+
+export interface DealDetail extends PipelineCard {
+  /** Oldest first. */
+  stage_changes: StageChangeOut[];
+  payment_links: PaymentLinkOut[];
+}
+
+export interface FunnelStep {
+  stage: DealStage;
+  /** Deals that got at least this far. */
+  reached: number;
+}
+
+export interface PostPerformance {
+  post: PostBrief;
+  product_name: string | null;
+  leads: number;
+  deals: number;
+  won: number;
+  revenue_minor: number;
+}
+
+export interface ChannelPerformance {
+  channel: Channel;
+  deals: number;
+  won: number;
+  revenue_minor: number;
+}
+
+export interface InsightsOut {
+  currency: string;
+  days: number;
+  leads: number;
+  deals: number;
+  won: number;
+  revenue_minor: number;
+  /** won / deals opened in the period, 0-1. */
+  conversion_rate: number | null;
+  agent_replies: number;
+  median_agent_reply_seconds: number | null;
+  handoffs: number;
+  funnel: FunnelStep[];
+  by_post: PostPerformance[];
+  by_channel: ChannelPerformance[];
 }

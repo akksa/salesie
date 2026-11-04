@@ -117,14 +117,18 @@ export function ShopperPhone({ onSent }: { onSent: (result: SimulationResult, in
   return (
     <div className="flex flex-col items-center gap-4">
       <ShopperPicker value={username} onChange={changeUsername} />
-      <div className="relative w-full max-w-[360px] rounded-[2.75rem] bg-neutral-900 p-2.5 shadow-lift ring-1 ring-black/40 dark:bg-neutral-800 dark:ring-white/10">
+      <div className="relative w-full max-w-[360px] rounded-[2.75rem] bg-neutral-900 p-2.5 shadow-lift ring-1 ring-black/40 dark:bg-neutral-800 dark:shadow-[0_0_60px_-12px_rgb(217_54_122/0.45)] dark:ring-white/10">
         <div
           aria-hidden
           className="absolute top-4 left-1/2 z-10 h-6 w-24 -translate-x-1/2 rounded-full bg-black"
         />
         <div className="flex h-[min(640px,calc(100dvh-14rem))] min-h-[480px] flex-col overflow-hidden rounded-[2.2rem] bg-surface-strong">
           <PhoneHeader shopName={business.data?.name ?? "Your shop"} />
-          <div ref={scrollRef} className="flex-1 space-y-2.5 overflow-y-auto px-3 py-4" aria-live="polite">
+          <div
+            ref={scrollRef}
+            className="scrollbar-none flex-1 space-y-2.5 overflow-y-auto px-3 py-4"
+            aria-live="polite"
+          >
             {items.length === 0 && !session.sending ? (
               <p className="mt-10 flex flex-col items-center gap-2 px-6 text-center text-xs text-fg-subtle">
                 <Info className="size-5" aria-hidden />

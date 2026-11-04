@@ -1,50 +1,42 @@
-import { CreditCard, ExternalLink, MessageCircle } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import type { AgentRunOut } from "@/api/types";
+import { CheckoutButton } from "@/components/CheckoutButton";
 import { LinkifiedText } from "@/components/LinkifiedText";
 import { Thumb } from "@/components/ui/Thumb";
 import { runNote } from "@/features/agent/steps";
 import { cn } from "@/lib/cn";
 import { formatTime } from "@/lib/format";
-import { paymentLinks } from "@/lib/linkify";
+import { splitPaymentLinks } from "@/lib/linkify";
 import type { PhoneItem } from "./phoneThread";
-
-function PayButton({ href }: { href: string }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="mt-1.5 inline-flex items-center gap-2 rounded-xl bg-surface-strong px-3 py-2 text-xs font-semibold text-fg shadow-soft ring-1 ring-border transition-[transform,box-shadow] duration-200 hover:-translate-y-px hover:shadow-lift"
-    >
-      <CreditCard className="size-4 text-brand-fg" aria-hidden />
-      Open checkout
-      <ExternalLink className="size-3 text-fg-subtle" aria-hidden />
-    </a>
-  );
-}
 
 function MessageBubble({ item }: { item: Extract<PhoneItem, { kind: "message" }> }) {
   const mine = item.side === "shopper";
+  // Salesie's checkout links become a button; the raw URL is not shown.
+  const { text, links } = mine || !item.text ? { text: item.text, links: [] } : splitPaymentLinks(item.text);
   return (
     <div className={cn("flex flex-col animate-enter", mine ? "items-end" : "items-start")}>
-      <div
-        className={cn(
-          "max-w-[82%] rounded-[1.25rem] px-3 py-2 text-[13px] leading-snug",
-          mine
-            ? "rounded-br-md bg-linear-to-br from-violet-600 to-fuchsia-600 text-white"
-            : "rounded-bl-md bg-surface-muted text-fg ring-1 ring-border",
-          item.pending && "opacity-60",
-        )}
-      >
-        {item.text ? (
+      {text ? (
+        <div
+          className={cn(
+            "max-w-[82%] rounded-[1.25rem] px-3 py-2 text-[13px] leading-snug",
+            mine
+              ? "rounded-br-md bg-linear-to-br from-violet-600 to-fuchsia-600 text-white"
+              : "rounded-bl-md bg-surface-muted text-fg ring-1 ring-border",
+            item.pending && "opacity-60",
+          )}
+        >
           <p className="whitespace-pre-wrap break-words">
-            <LinkifiedText text={item.text} linkClassName={mine ? undefined : "text-brand-fg font-medium"} />
+            <LinkifiedText text={text} linkClassName={mine ? undefined : "text-brand-fg font-medium"} />
           </p>
-        ) : (
-          <p className="italic opacity-75">Attachment</p>
-        )}
-      </div>
-      {!mine ? paymentLinks(item.text).map((href) => <PayButton key={href} href={href} />) : null}
+        </div>
+      ) : links.length === 0 ? (
+        <p className="rounded-[1.25rem] bg-surface-muted px-3 py-2 text-[13px] italic opacity-75">
+          Attachment
+        </p>
+      ) : null}
+      {links.map((href) => (
+        <CheckoutButton key={href} href={href} className="mt-1.5" />
+      ))}
       <span className="mt-0.5 px-1 text-[10px] text-fg-subtle">
         {item.pending ? "Sending…" : formatTime(item.at)}
       </span>

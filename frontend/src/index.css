@@ -18,7 +18,7 @@
   --border-strong: rgb(41 30 20 / 0.2);
   --fg: #1d1712;
   --fg-muted: #6b5f55;
-  --fg-subtle: #8f8378;
+  --fg-subtle: #74685e;
   --ring: #e2522c;
   --brand-1: #ff6a3d;
   --brand-2: #d9367a;
@@ -77,6 +77,9 @@
   --animate-page: page 300ms ease-out both;
   --animate-shimmer: shimmer 1.4s linear infinite;
   --animate-flash: flash 1.2s ease-out both;
+  --animate-flash-won: flash-won 1.6s ease-out both;
+  --animate-toast: toast 300ms ease-out both;
+  --animate-drawer: drawer 300ms ease-out both;
 }
 
 @keyframes enter {
@@ -107,6 +110,36 @@
   }
   to {
     background-position: 200% 0;
+  }
+}
+
+@keyframes drawer {
+  from {
+    opacity: 0.6;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Only a "from" frame: the element animates back to its own background and shadow. */
+@keyframes flash-won {
+  from {
+    background-color: rgb(16 185 129 / 0.25);
+    box-shadow: 0 0 0 3px rgb(16 185 129 / 0.35);
+  }
+}
+
+@keyframes toast {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -157,6 +190,12 @@
     @apply animate-shimmer rounded-md;
   }
   /* Deepened ends of the brand ramp so white text on it stays >= 4.5:1 (WCAG AA). */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
   .brand-gradient {
     background-image: linear-gradient(135deg, #d03d12, #c42a6c);
   }
@@ -168,6 +207,7 @@
   *::after {
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }

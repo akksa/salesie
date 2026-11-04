@@ -1,9 +1,11 @@
 import { CircleAlert, Hand, MessageCircle, MessageCircleOff, ShieldBan } from "lucide-react";
 import type { AgentRunOut, MessageOut, PostOut } from "@/api/types";
+import { CheckoutButton } from "@/components/CheckoutButton";
 import { LinkifiedText } from "@/components/LinkifiedText";
 import { WhyDisclosure } from "@/features/agent/RunDetails";
 import { cn } from "@/lib/cn";
 import { formatAbsolute, formatTime } from "@/lib/format";
+import { splitPaymentLinks } from "@/lib/linkify";
 import { authorLabel, sameDay } from "./messageUtils";
 import type { TimelineItem } from "./timeline";
 
@@ -42,6 +44,10 @@ function Bubble({
   showAuthor: boolean;
 }) {
   const outbound = message.direction === "outbound";
+  const pending = message.id < 0; // optimistic owner message, see useSendOwnerMessage
+  // Checkout links in Salesie's/your messages show as a button, not a raw URL.
+  const { text, links } =
+    outbound && message.text ? splitPaymentLinks(message.text) : { text: message.text, links: [] };
   return (
     <div className={cn("flex flex-col animate-enter", outbound ? "items-end" : "items-start")}>
       {showAuthor ? (
@@ -49,26 +55,35 @@ function Bubble({
           {label(message, contactName)}
         </span>
       ) : null}
-      <div
-        className={cn("max-w-[85%] rounded-2xl px-3.5 py-2 text-sm sm:max-w-[70%]", BUBBLE[message.author])}
-      >
-        {message.text ? (
-          <p className="whitespace-pre-wrap break-words">
-            <LinkifiedText
-              text={message.text}
-              linkClassName={message.author === "contact" ? "text-brand-fg" : undefined}
-            />
-          </p>
-        ) : (
-          <p className="italic opacity-75">Attachment or unsupported message</p>
-        )}
-      </div>
+      {text || links.length === 0 ? (
+        <div
+          className={cn(
+            "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm transition-opacity sm:max-w-[70%]",
+            BUBBLE[message.author],
+            pending && "opacity-60",
+          )}
+        >
+          {text ? (
+            <p className="whitespace-pre-wrap break-words">
+              <LinkifiedText
+                text={text}
+                linkClassName={message.author === "contact" ? "text-brand-fg" : undefined}
+              />
+            </p>
+          ) : (
+            <p className="italic opacity-75">Attachment or unsupported message</p>
+          )}
+        </div>
+      ) : null}
+      {links.map((href) => (
+        <CheckoutButton key={href} href={href} className="mt-1.5" />
+      ))}
       <time
         dateTime={message.sent_at}
         title={formatAbsolute(message.sent_at)}
         className="mt-1 px-1 text-[10px] text-fg-subtle"
       >
-        {formatTime(message.sent_at)}
+        {pending ? "Sending…" : formatTime(message.sent_at)}
       </time>
       {message.agent_run_id !== null ? (
         <WhyDisclosure run={run} loading={runsLoading} align={outbound ? "right" : "left"} />
@@ -96,7 +111,7 @@ function Note({ run, text }: { run: AgentRunOut; text: string }) {
         <Icon className="mt-px size-3.5 shrink-0" aria-hidden />
         <span className="min-w-0 break-words">{text}</span>
       </p>
-      {run.status !== "handed_off" ? <WhyDisclosure run={run} loading={false} align="left" /> : null}
+      {run.status !== "handed_off" ? <WhyDisclosure run={run} loading={false} align="center" /> : null}
     </div>
   );
 }

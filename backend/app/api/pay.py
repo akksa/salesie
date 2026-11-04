@@ -64,11 +64,11 @@ async def _send_receipt(request: Request, contact_id: int, product_name: str) ->
     text = (
         f"Payment received, thank you! 🎉 Your {product_name} is confirmed. We'll be in touch about delivery."
     )
-    if agent.payments.name == "test_checkout":
-        text += " (Test checkout: no money was taken.)"
+    # Real shoppers must know a test checkout took no money; simulated ones are the owner testing.
+    note = " (Test checkout: no money was taken.)" if agent.payments.name == "test_checkout" else ""
     try:
         async with request.app.state.sessionmaker() as session, session.begin():
-            await notify_shopper(session, agent, contact_id, text)
+            await notify_shopper(session, agent, contact_id, text, real_shopper_note=note)
     except Exception:  # the payment already stands; a missed receipt is logged, not fatal
         logger.exception("could not send payment receipt to contact %s", contact_id)
 

@@ -28,11 +28,3 @@ export function RunStatusBadge({ status }: { status: AgentRunStatus }) {
     </Badge>
   );
 }
-
-export function MockBadge({ className }: { className?: string }) {
-  return (
-    <Badge tone="warning" className={className} title="Replies come from a scripted mock, not Muse Spark">
-      Mock model (no API credits)
-    </Badge>
-  );
-}

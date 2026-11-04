@@ -1,48 +1,56 @@
 import { Bot } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useAgentStatus } from "./api";
-import { MockBadge } from "./RunStatusBadge";
+import { isMockModel, modelDisplayName } from "./steps";
 
-/** Compact agent status for the sidebar: on/off, the real model name, mock + sending mode. */
+/**
+ * The one place the UI names the model, so viewers always know whether replies come
+ * from Muse Spark or the mock. Sending/payment modes live in the tooltip.
+ */
 export function AgentStatusCard() {
   const status = useAgentStatus();
   const data = status.data;
   if (status.isError) {
     return <p className="px-1 text-xs text-danger">Agent status unavailable</p>;
   }
-  if (!data) return <div className="skeleton h-16 w-full rounded-xl" aria-hidden />;
+  if (!data) return <div className="skeleton h-14 w-full rounded-xl" aria-hidden />;
 
+  const mock = data.is_mock || isMockModel(data.model);
+  const details = `Model id: ${data.model}\nInstagram: ${data.instagram_sending} · Payments: ${data.payments.replace(/_/g, " ")}`;
   return (
     <section
       aria-label="Sales agent status"
-      className="space-y-2 rounded-xl border border-border bg-surface-strong/70 p-3 text-xs shadow-soft"
+      title={details}
+      className="space-y-1 rounded-xl border border-border bg-surface-strong/70 p-3 shadow-soft"
     >
-      <p className="flex items-center gap-2 font-semibold text-fg">
+      <p className="flex items-center gap-2 text-xs font-medium text-fg-muted">
         <Bot className="size-4 text-brand-fg" aria-hidden />
         Sales agent
-        <span
-          className={cn(
-            "ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-            data.enabled
-              ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-400/15 dark:text-emerald-200"
-              : "bg-surface-muted text-fg-muted",
-          )}
-        >
+        <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] font-semibold">
+          <span className="relative flex size-2">
+            {data.enabled ? (
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-60 motion-reduce:hidden" />
+            ) : null}
+            <span
+              className={cn(
+                "relative inline-flex size-2 rounded-full",
+                data.enabled ? "bg-emerald-500" : "bg-fg-subtle",
+              )}
+            />
+          </span>
           {data.enabled ? "On" : "Off"}
         </span>
       </p>
-      <p className="truncate font-mono text-fg-muted" title={data.model}>
-        {data.model}
+      <p
+        className={cn(
+          "font-display text-sm font-semibold",
+          mock ? "text-amber-800 dark:text-amber-200" : "text-fg",
+        )}
+      >
+        {modelDisplayName(data.model)}
       </p>
-      {data.is_mock ? <MockBadge /> : null}
-      <p className="text-fg-subtle">
-        Instagram:{" "}
-        <span
-          className={cn("font-medium", data.instagram_sending === "live" ? "text-success" : "text-fg-muted")}
-        >
-          {data.instagram_sending}
-        </span>
-        {" · "}Payments: <span className="font-medium text-fg-muted">{data.payments.replace(/_/g, " ")}</span>
+      <p className="sr-only">
+        Instagram sending: {data.instagram_sending}. Payments: {data.payments.replace(/_/g, " ")}.
       </p>
     </section>
   );

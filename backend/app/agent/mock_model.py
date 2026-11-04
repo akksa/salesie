@@ -63,18 +63,18 @@ class MockSalesModel:
         return "mock-sales-brain"
 
     async def complete(self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec]) -> AssistantTurn:
-        text = _shopper_text(messages)
+        text = _shopper_text(messages).lower()
         facts = (messages[1].content or "") if len(messages) > 1 else ""
         deals = [_Deal(m[0], int(m[1]), m[2] or None, m[3]) for m in _DEAL_LINE.findall(facts)]
         results = _tool_results_this_turn(messages)
         if not results:
-            return _first_move(text, deals, _last_reply(messages))
+            return _first_move(text, deals, _last_reply(messages), _shopper_text(messages))
         if follow_up := _second_move(text, results):
             return follow_up
         return AssistantTurn(text=_compose(text, facts, deals, _shop_notes(messages), results, messages))
 
 
-def _first_move(text: str, deals: list[_Deal], last_reply: str) -> AssistantTurn:
+def _first_move(text: str, deals: list[_Deal], last_reply: str, original: str) -> AssistantTurn:
     focus = _named(deals, text) or (deals[0] if deals else None)
     if _DECLINE.search(text):
         if focus is None:
@@ -82,7 +82,8 @@ def _first_move(text: str, deals: list[_Deal], last_reply: str) -> AssistantTurn
         lost = {"stage": "lost", "reason": "shopper declined", "product_id": focus.product_id}
         return _calls(("update_deal_stage", lost))
     if _HUMAN.search(text):
-        return _calls(("hand_off_to_owner", {"reason": f"Shopper wrote: {text[:150]}"}))
+        quote = original.strip()[:120] + ("…" if len(original.strip()) > 120 else "")
+        return _calls(("hand_off_to_owner", {"reason": f'"{quote}"'}))
     details = _details(text)
     if _wants_to_buy(text):
         if focus is None:  # e.g. started in DMs: buy what was just discussed
@@ -176,14 +177,14 @@ def _product_reply(product: dict[str, Any], text: str, notes: str) -> str:
 
 
 def _shopper_text(messages: Sequence[ChatMessage]) -> str:
-    """The shopper's messages since our last reply, lowercased, without Salesie's comment framing."""
+    """The shopper's messages since our last reply, without Salesie's comment framing."""
     collected: list[str] = []
     for message in reversed(messages):
         if message.role == "assistant" and not message.tool_calls:
             break
         if message.role == "user" and message.content and not message.content.startswith(_CONTEXT_PREFIX):
             collected.append(_COMMENT.sub(r"\1", message.content))
-    return " ".join(reversed(collected)).lower()
+    return " ".join(reversed(collected))
 
 
 def _last_reply(messages: Sequence[ChatMessage]) -> str:

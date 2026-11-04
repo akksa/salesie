@@ -20,7 +20,7 @@ and sends a payment link, moving the deal through the pipeline as it goes.
 | 2 | Instagram sales loop: private reply → DM → sales agent → payment link → won | **built** (model mocked until API credits) |
 | 3 | Post → product mapping with SAM 3.1 + Muse Spark vision | planned |
 | 4 | WhatsApp channel (+ voice notes via Muse Voice Transcribe) | planned |
-| 5 | Owner dashboard: pipeline, attribution, take over a chat | planned |
+| 5 | Owner dashboard: pipeline board, deal timeline, take over a chat, insights | **built** |
 
 ## How it works (Phase 1)
 
@@ -87,6 +87,16 @@ payment link ──▶ /pay/{token} (test checkout) ──▶ deal won ──▶
 | Instagram sending | recorded in Salesie only | `INSTAGRAM_ACCESS_TOKEN=…` (simulated shoppers still never reach Meta) |
 | Payments | built-in test checkout page, no money moves | a real provider implementing `PaymentProvider` |
 
+## The owner dashboard (Phase 5)
+
+- **Pipeline board**: every deal by stage with totals; drag a card to override (paid in cash, lost...).
+  Closing a deal retires its unpaid payment links. Cards flag chats the agent handed over ("Needs you").
+- **Deal timeline**: every stage change with who made it (system, agent, owner) and why, plus payment links.
+- **Take over a chat**: reply from the inbox. The agent pauses on that chat until you resume it. Instagram
+  lets a person reply up to 7 days after the shopper's last message (HUMAN_AGENT tag), the agent only 24 hours.
+- **Insights**: leads, deals, won revenue, conversion, the funnel, the agent's reply time and hand-offs,
+  and *which posts made money*: every sale traced back to the post and channel it came from.
+
 ## Run it locally
 
 Prerequisites: Python 3.12 with [uv](https://docs.astral.sh/uv/), Node 24, PostgreSQL server binaries
@@ -102,6 +112,7 @@ cd backend
 uv sync
 uv run alembic upgrade head
 uv run python -m app.seed    # demo shop "Bloom & Thread" (--reset wipes the database first)
+uv run python -m app.demo    # optional: 8 shoppers played through the real pipeline (board, inbox, insights)
 uv run uvicorn app.main:create_app --factory --port 8000 --no-server-header
 
 # 3. Frontend (another terminal)

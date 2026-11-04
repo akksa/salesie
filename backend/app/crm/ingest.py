@@ -137,7 +137,7 @@ async def _progress_deal_on_inbound_message(session: AsyncSession, business_id: 
     if deal is not None:
         if deal.stage == DealStage.NEW:
             await deals.change_stage(
-                session, deal, DealStage.ENGAGED, actor=Actor.SYSTEM, reason="replied by Instagram DM"
+                session, deal, DealStage.ENGAGED, actor=Actor.SYSTEM, reason="the shopper replied in DMs"
             )
         return
     if await deals.recently_closed(session, contact_id):
@@ -148,5 +148,5 @@ async def _progress_deal_on_inbound_message(session: AsyncSession, business_id: 
         contact_id=contact_id,
         channel=Channel.INSTAGRAM,
         stage=DealStage.ENGAGED,
-        reason="started an Instagram DM conversation",
+        reason="the shopper sent a DM",
     )

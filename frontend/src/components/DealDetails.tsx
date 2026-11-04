@@ -6,24 +6,33 @@ import { attributeToText } from "@/lib/format";
 export function DealDetailChips({
   details,
   max = 6,
+  size = "sm",
   className,
 }: {
   details: Record<string, JsonValue> | undefined;
   max?: number;
+  /** "md" for the drawer/contact page (readable on video); "sm" for dense tables. */
+  size?: "sm" | "md";
   className?: string;
 }) {
   const entries = Object.entries(details ?? {});
   if (entries.length === 0) return null;
   const hidden = entries.length - max;
   return (
-    <ul className={cn("flex flex-wrap gap-1", className)} aria-label="Details the agent noted">
+    <ul
+      className={cn("flex flex-wrap", size === "md" ? "gap-1.5" : "gap-1", className)}
+      aria-label="Details the agent noted"
+    >
       {entries.slice(0, max).map(([key, value]) => (
         <li
           key={key}
-          className="max-w-full truncate rounded-md bg-violet-50 px-1.5 py-0.5 text-[11px] text-violet-900 ring-1 ring-violet-200 ring-inset dark:bg-violet-400/10 dark:text-violet-100 dark:ring-violet-400/25"
+          className={cn(
+            "max-w-full truncate bg-violet-50 text-violet-950 ring-1 ring-violet-200 ring-inset dark:bg-violet-400/10 dark:text-violet-50 dark:ring-violet-400/25",
+            size === "md" ? "rounded-lg px-2.5 py-1 text-sm" : "rounded-md px-1.5 py-0.5 text-[11px]",
+          )}
           title={`${key}: ${attributeToText(value)}`}
         >
-          <span className="opacity-70">{key}</span>{" "}
+          <span className="text-violet-800/75 dark:text-violet-200/75">{key}</span>{" "}
           <span className="font-semibold">{attributeToText(value)}</span>
         </li>
       ))}
