@@ -70,6 +70,40 @@ async def test_request_follows_the_chat_completions_format() -> None:
     assert turn.text == "Hi!"
 
 
+async def test_reasoning_is_kept_low_so_the_reply_has_room() -> None:
+    # Muse Spark always reasons, and reasoning counts against max_completion_tokens: at the default effort
+    # a 1024-token budget ran out mid-thought on a real comment and the planning text went to the shopper.
+    bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content))
+        choice = {"message": {"content": "Hi!"}, "finish_reason": "stop"}
+        return httpx.Response(200, json={"choices": [choice]})
+
+    await client_with(handler).complete([ChatMessage("user", "hi")], TOOLS)
+    plain = MuseClient(
+        api_key="k",
+        base_url="https://inference.example/v1",
+        model="m",
+        reasoning_effort=None,  # for an endpoint that doesn't take the setting
+        transport=httpx.MockTransport(handler),
+    )
+    await plain.complete([ChatMessage("user", "hi")], TOOLS)
+
+    assert (bodies[0]["reasoning_effort"], bodies[0]["max_completion_tokens"]) == ("low", 4096)
+    assert "reasoning_effort" not in bodies[1]
+
+
+async def test_a_reply_cut_off_by_the_token_limit_is_never_used() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        cut = {"message": {"content": "Got it — I'll send the price and ask"}, "finish_reason": "length"}
+        return httpx.Response(200, json={"choices": [cut]})
+
+    with pytest.raises(LLMError) as raised:
+        await client_with(handler).complete([ChatMessage("user", "price?")], TOOLS)
+    assert raised.value.retryable is False  # the owner gets the chat; the shopper gets the holding message
+
+
 async def test_tool_calls_are_parsed_from_json_string_arguments() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         message = {

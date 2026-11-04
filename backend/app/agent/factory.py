@@ -16,6 +16,8 @@ def build_agent_services(settings: Settings) -> AgentServices:
             base_url=settings.llm_base_url,
             model=settings.llm_model,
             timeout=settings.llm_timeout_seconds,
+            reasoning_effort=settings.llm_reasoning_effort,
+            max_completion_tokens=settings.llm_max_completion_tokens,
         )
     live_sender = (
         GraphSender(

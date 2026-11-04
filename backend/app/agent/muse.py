@@ -30,10 +30,16 @@ class MuseClient:
         base_url: str,
         model: str,
         timeout: float = 60.0,
+        reasoning_effort: str | None = "low",
+        max_completion_tokens: int = 4096,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._model = model
         self._api_key = api_key
+        # Muse Spark always reasons, and reasoning counts against max_completion_tokens. "low" halves reply
+        # time and keeps the budget for the reply; None omits the setting (endpoints that don't take it).
+        self._reasoning_effort = reasoning_effort
+        self._max_completion_tokens = max_completion_tokens
         self._http = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}"},
@@ -52,8 +58,10 @@ class MuseClient:
         body: dict[str, Any] = {
             "model": self._model,
             "messages": [_message_json(m) for m in messages],
-            "max_completion_tokens": 1024,
+            "max_completion_tokens": self._max_completion_tokens,
         }
+        if self._reasoning_effort:
+            body["reasoning_effort"] = self._reasoning_effort
         if tools:
             body["tools"] = [_tool_json(t) for t in tools]
         data = await self._post_with_retry(body)
@@ -106,9 +114,13 @@ def _tool_json(tool: ToolSpec) -> dict[str, Any]:
 def _parse_turn(data: object) -> AssistantTurn:
     """Parse an OpenAI-shaped completion. Anything malformed becomes an LLMError, never a crash."""
     try:
-        message = data["choices"][0]["message"]  # type: ignore[index]
+        choice = data["choices"][0]  # type: ignore[index]
+        message = choice["message"]
     except (KeyError, IndexError, TypeError) as exc:
         raise LLMError("model response has no choices[0].message", retryable=False) from exc
+    if isinstance(choice, dict) and choice.get("finish_reason") == "length":
+        # Cut off mid-reply: what's there is half a sentence or the model's own planning, never a message
+        raise LLMError("the model ran out of output tokens before finishing its reply", retryable=False)
     if not isinstance(message, dict):
         raise LLMError("model response message is not an object", retryable=False)
     raw_calls = message.get("tool_calls") or []

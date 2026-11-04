@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI
 from pydantic import ValidationError
 
+from app.main import FRONTEND_DIST
 from tests.conftest import OWNER_AUTH, _build_app, make_settings
 
 
@@ -30,6 +31,18 @@ async def test_security_headers_are_set(client: httpx.AsyncClient, business_id: 
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
     assert response.headers["cache-control"] == "no-store"
     assert "cache-control" not in (await client.get("/healthz")).headers
+
+
+@pytest.mark.skipif(not (FRONTEND_DIST / "index.html").is_file(), reason="the dashboard isn't built")
+@pytest.mark.parametrize("path", ["/", "/pipeline"])
+async def test_the_dashboard_page_is_never_served_from_a_stale_cache(
+    anon_client: httpx.AsyncClient, path: str
+) -> None:
+    # After a rebuild, a cached index.html names scripts that no longer exist: the dashboard stays blank.
+    response = await anon_client.get(path)
+    assert response.status_code == 200
+    assert "<html" in response.text.lower()
+    assert response.headers["cache-control"] == "no-cache"
 
 
 async def test_api_docs_are_off_by_default(anon_client: httpx.AsyncClient) -> None:

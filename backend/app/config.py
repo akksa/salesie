@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.meta.ai/v1"
     llm_model: str = "muse-spark-1.3"
     llm_timeout_seconds: float = 60.0
+    # Muse Spark always reasons, and the reasoning counts against the token budget. Empty = don't send it.
+    llm_reasoning_effort: Literal["minimal", "low", "medium", "high", "xhigh"] | None = "low"
+    llm_max_completion_tokens: int = 4096
 
     # Instagram sending. Without a token, replies are recorded in Salesie but not sent to Meta.
     instagram_access_token: SecretStr | None = None
@@ -68,7 +71,13 @@ class Settings(BaseSettings):
             raise ValueError(f"must be at least {MIN_OWNER_PASSWORD_LENGTH} characters")
         return value
 
-    @field_validator("model_api_key", "instagram_access_token", "facebook_page_access_token", mode="before")
+    @field_validator(
+        "model_api_key",
+        "instagram_access_token",
+        "facebook_page_access_token",
+        "llm_reasoning_effort",
+        mode="before",
+    )
     @classmethod
     def empty_means_unset(cls, value: object) -> object:
         return None if isinstance(value, str) and not value.strip() else value

@@ -77,7 +77,8 @@ def _mount_frontend(app: FastAPI) -> None:
         candidate = (FRONTEND_DIST / path).resolve()
         if path and candidate.is_file() and candidate.is_relative_to(FRONTEND_DIST):
             return FileResponse(candidate)
-        return FileResponse(FRONTEND_DIST / "index.html")
+        # Always revalidated: a cached index.html names old hashed scripts after a rebuild (blank dashboard)
+        return FileResponse(FRONTEND_DIST / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 class _HidePaymentTokens(logging.Filter):
