@@ -23,16 +23,19 @@ from app.agent.gate import AgentGate
 from app.agent.llm import ChatMessage, LLMClient, LLMError
 from app.agent.prompt import AgentContext, build_messages
 from app.agent.tools import TOOL_SPECS, ToolContext, run_tool
-from app.channels.instagram import (
+from app.channels.messaging import (
     Blocked,
-    InstagramSender,
-    InstagramSendError,
+    MessageSender,
     Recipient,
+    SendError,
+    account_id_for,
     fit_message,
+    inbox_channel,
+    platform_name,
     reply_route,
     utf8_length,
 )
-from app.crm.contacts import display_name, record_activity
+from app.crm.contacts import display_name, link_identity, record_activity
 from app.crm.store import get_or_create, lock_agent_turn
 from app.models import (
     OPEN_STAGES,
@@ -61,16 +64,25 @@ MAX_STEPS = 6
 HOLDING_MESSAGE = "Thanks for your message! The owner will get back to you here shortly."
 MAX_FOLLOW_UPS = 2  # extra turns for messages that arrive while the model is thinking
 # Anything a shopper's app would turn into a link: scheme://..., www...., a domain with a path
-# (evil.example/pay), or a bare domain with a common TLD. Instagram handles like "fay.loves" are left alone.
+# (evil.example/pay), or a bare domain with a common or two-letter country TLD. Labels may be any script
+# (look-alike Cyrillic domains), and apps also accept the fullwidth and ideographic dots as dots.
+# Instagram handles like "fay.loves" are left alone.
 _COMMON_TLDS = (
     "com|net|org|io|co|app|shop|store|online|site|xyz|info|biz|me|ly|link|click|top|live|pay|money|"
-    "in|uk|us|ru|cn|de|fr|br|au|ca|nl|ai|dev|tk|ml|ga|cf|gq|ws|cc|tv|gl|to|sh|gg|su|vip|win|bid|icu"
+    "ai|dev|vip|win|bid|icu|zip|mov|club|fun|life|world|today|email|support|help|page|tech|space|"
+    "[a-z]{2}"
 )
+_DOT = "[.\uff0e\u3002\uff61]"
+_LABEL = r"[^\W_](?:[\w-]*[^\W_])?"
 _LINKISH = re.compile(
-    r"(?i)\b(?:[a-z][a-z0-9+.-]*://|www\.)\S+"
-    r"|\b(?:[a-z0-9-]+\.)+[a-z]{2,}/\S*"
-    rf"|(?<![@\w.])\b(?:[a-z0-9-]+\.)+(?:{_COMMON_TLDS})\b(?![.\w])"
+    rf"(?i)\b(?:[a-z][a-z0-9+.-]*://|www{_DOT})\S+"
+    rf"|\b(?:{_LABEL}{_DOT})+[^\W\d_]{{2,}}/\S*"
+    rf"|(?<![@\w.\uff0e\u3002\uff61])(?:{_LABEL}{_DOT})+(?:{_COMMON_TLDS})(?![.\uff0e\u3002\uff61\w])"
 )
+# Markdown the model may still write, which Instagram and Messenger would show as typed. Only ** bold and
+# headings: single * and __ appear in ordinary text and handles ("5*", "@__maya__").
+_BOLD = re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*", re.DOTALL)
+_HEADING = re.compile(r"(?m)^[ \t]*#{1,6}[ \t]+")
 _COVERED = (AgentRunStatus.REPLIED, AgentRunStatus.HANDED_OFF, AgentRunStatus.SKIPPED)
 
 
@@ -81,15 +93,17 @@ class _SupersededError(Exception):
 @dataclass(frozen=True)
 class AgentServices:
     llm: LLMClient
-    recorder: InstagramSender
+    recorder: MessageSender
     payments: PaymentProvider
     gate: AgentGate
-    live_sender: InstagramSender | None = None
+    live_sender: MessageSender | None = None  # Instagram
     enabled: bool = True
+    messenger_sender: MessageSender | None = None  # Facebook Messenger
 
-    def sender_for(self, identity: ContactIdentity) -> InstagramSender:
-        """Simulated shoppers are never messaged through Meta."""
-        return self.recorder if identity.simulated or self.live_sender is None else self.live_sender
+    def sender_for(self, channel: Channel, *, simulated: bool) -> MessageSender:
+        """Simulated shoppers are never messaged through Meta; neither is a channel with no token."""
+        live = self.messenger_sender if channel == Channel.MESSENGER else self.live_sender
+        return self.recorder if simulated or live is None else live
 
 
 @dataclass(frozen=True)
@@ -98,15 +112,26 @@ class ReplyRequest:
     contact_id: int
     trigger: AgentTrigger
     engagement_id: int | None = None
+    channel: Channel = Channel.INSTAGRAM  # where the comment or message came in
 
 
 @dataclass(frozen=True)
 class _Shopper:
     business: Business
     contact: Contact
-    identity: ContactIdentity
+    inbox: Channel  # where the conversation happens (Messenger for Facebook commenters)
+    identity: ContactIdentity | None  # their id in the inbox channel, once we know it
+    identities: tuple[ContactIdentity, ...]
+    simulated: bool
     conversation: Conversation | None
     engagement: Engagement | None
+
+    @property
+    def engagement_channel(self) -> Channel:
+        """Where they found the business: the comment's channel, else their inbox's platform."""
+        if self.engagement is not None:
+            return self.engagement.channel
+        return Channel.FACEBOOK if self.inbox == Channel.MESSENGER else self.inbox
 
 
 @dataclass(frozen=True)
@@ -149,7 +174,12 @@ async def respond(
             runs.append(run)
             if run.status != AgentRunStatus.REPLIED:
                 break
-            current = ReplyRequest(request.business_id, request.contact_id, AgentTrigger.DM)
+            current = ReplyRequest(
+                request.business_id,
+                request.contact_id,
+                AgentTrigger.DM,
+                channel=inbox_channel(request.channel),
+            )
     return runs
 
 
@@ -168,11 +198,7 @@ async def _turn(
         return run
     except Exception as exc:  # recorded as a failed run below; full traceback in the log
         logger.exception("agent run for contact %s failed", request.contact_id)
-        error = (
-            str(exc)
-            if isinstance(exc, InstagramSendError)
-            else f"{type(exc).__name__} (details in server log)"
-        )
+        error = str(exc) if isinstance(exc, SendError) else f"{type(exc).__name__} (details in server log)"
         async with sessionmaker() as session, session.begin():
             run = _run(request, services.llm, AgentRunStatus.FAILED, started, error=error)
             session.add(run)
@@ -191,7 +217,7 @@ async def _respond(
     conversation, engagement = shopper.conversation, shopper.engagement
     route = reply_route(
         now=datetime.now(UTC),
-        contact_external_id=shopper.identity.external_id,
+        contact_external_id=shopper.identity.external_id if shopper.identity else "",
         last_inbound_at=conversation.last_inbound_at if conversation else None,
         comment_id=engagement.external_id if engagement else None,
         comment_at=engagement.occurred_at if engagement else None,
@@ -205,7 +231,7 @@ async def _respond(
         return run
     if not services.gate.spend(shopper.contact.id):
         return await _over_budget(session, services, request, shopper, started)
-    tools = ToolContext(session, shopper.business, shopper.contact.id, Channel.INSTAGRAM, services.payments)
+    tools = ToolContext(session, shopper.business, shopper.contact.id, shopper.inbox, services.payments)
     context = await _context(session, shopper, route)
     outcome = await _attempt(services.llm, build_messages(context, date.today()), tools)
     seen = max((m.id for m in context.history), default=None)
@@ -222,7 +248,7 @@ async def _over_budget(
     conversation, _ = await get_or_create(
         session,
         Conversation,
-        {"business_id": shopper.business.id, "contact_id": shopper.contact.id, "channel": Channel.INSTAGRAM},
+        {"business_id": shopper.business.id, "contact_id": shopper.contact.id, "channel": shopper.inbox},
     )
     conversation.agent_paused = True
     conversation.paused_by = Actor.AGENT
@@ -312,7 +338,7 @@ async def _deliver(
     conversation, _ = await get_or_create(
         session,
         Conversation,
-        {"business_id": shopper.business.id, "contact_id": shopper.contact.id, "channel": Channel.INSTAGRAM},
+        {"business_id": shopper.business.id, "contact_id": shopper.contact.id, "channel": shopper.inbox},
     )
     await session.refresh(conversation)  # the owner may have taken over while the model was thinking
     if conversation.agent_paused:
@@ -343,16 +369,29 @@ async def _deliver(
         conversation.paused_by = Actor.AGENT
         conversation.paused_reason = clean_text(tools.handoff_reason)[:500]
     await session.flush()  # any database error surfaces here, before the shopper receives anything
-    sender = services.sender_for(shopper.identity)
-    message.external_id = await sender.send_text(shopper.business.ig_account_id or "", route, reply)
+    sender = services.sender_for(shopper.inbox, simulated=shopper.simulated)
+    account = account_id_for(shopper.business, shopper.inbox) or ""
+    sent = await sender.send_text(account, route, reply)
+    message.external_id = sent.message_id
+    if route.kind == "comment" and sent.recipient_id and shopper.inbox != shopper.engagement_channel:
+        await link_identity(
+            session,
+            business_id=shopper.business.id,
+            contact_id=shopper.contact.id,
+            channel=shopper.inbox,
+            external_id=sent.recipient_id,
+            simulated=shopper.simulated,
+        )
     run.finished_at = datetime.now(UTC)  # reply time includes the send
     return run
 
 
 def final_text(text: str, payment_link: str | None) -> str:
-    """What may leave Salesie: no links or web addresses except our own payment link, which arrives whole."""
+    """What may leave Salesie: plain text, and no links or web addresses except our own payment link, which
+    arrives whole."""
+    plain = _HEADING.sub("", _BOLD.sub(r"\1", text))
     cleaned = _LINKISH.sub(
-        lambda m: m.group(0) if payment_link and m.group(0).startswith(payment_link) else "", text
+        lambda m: m.group(0) if payment_link and m.group(0).startswith(payment_link) else "", plain
     )
     cleaned = re.sub(r"[ \t]{2,}", " ", clean_text(cleaned)).strip()
     if payment_link and payment_link not in cleaned:
@@ -364,14 +403,17 @@ def final_text(text: str, payment_link: str | None) -> str:
 async def notify_shopper(
     session: AsyncSession, services: AgentServices, contact_id: int, text: str, *, real_shopper_note: str = ""
 ) -> Message | None:
-    """Send a templated message (e.g. a payment receipt) inside the 24-hour window, if it's open."""
+    """Send a templated message (e.g. a payment receipt) in the shopper's latest conversation, if Meta's
+    24-hour window is open."""
     conversation = await session.scalar(
-        select(Conversation).where(
-            Conversation.contact_id == contact_id, Conversation.channel == Channel.INSTAGRAM
-        )
+        select(Conversation)
+        .where(Conversation.contact_id == contact_id)
+        .order_by(Conversation.last_message_at.desc().nulls_last(), Conversation.id.desc())
+        .limit(1)
     )
-    identity = await _instagram_identity(session, contact_id)
     business = await session.get(Business, conversation.business_id) if conversation else None
+    identities = await _identities(session, contact_id)
+    identity = next((i for i in identities if conversation and i.channel == conversation.channel), None)
     if conversation is None or identity is None or business is None:
         logger.info("no conversation to notify contact %s in", contact_id)
         return None
@@ -397,9 +439,11 @@ async def notify_shopper(
     session.add(message)
     conversation.last_message_at = now
     await session.flush()
-    message.external_id = await services.sender_for(identity).send_text(
-        business.ig_account_id or "", route, message.text or ""
+    sender = services.sender_for(conversation.channel, simulated=identity.simulated)
+    sent = await sender.send_text(
+        account_id_for(business, conversation.channel) or "", route, message.text or ""
     )
+    message.external_id = sent.message_id
     return message
 
 
@@ -409,24 +453,31 @@ async def notify_shopper(
 async def _load(session: AsyncSession, request: ReplyRequest) -> _Shopper | None:
     business = await session.get(Business, request.business_id)
     contact = await session.get(Contact, request.contact_id)
-    identity = await _instagram_identity(session, request.contact_id)
-    if business is None or contact is None or identity is None:
+    identities = await _identities(session, request.contact_id)
+    if business is None or contact is None or not identities:
         return None
+    inbox = inbox_channel(request.channel)
     conversation = await session.scalar(
-        select(Conversation).where(
-            Conversation.contact_id == contact.id, Conversation.channel == Channel.INSTAGRAM
-        )
+        select(Conversation).where(Conversation.contact_id == contact.id, Conversation.channel == inbox)
     )
     engagement = await session.get(Engagement, request.engagement_id) if request.engagement_id else None
-    return _Shopper(business, contact, identity, conversation, engagement)
-
-
-async def _instagram_identity(session: AsyncSession, contact_id: int) -> ContactIdentity | None:
-    return await session.scalar(
-        select(ContactIdentity).where(
-            ContactIdentity.contact_id == contact_id, ContactIdentity.channel == Channel.INSTAGRAM
-        )
+    return _Shopper(
+        business=business,
+        contact=contact,
+        inbox=inbox,
+        identity=next((i for i in identities if i.channel == inbox), None),
+        identities=identities,
+        simulated=any(i.simulated for i in identities),
+        conversation=conversation,
+        engagement=engagement,
     )
+
+
+async def _identities(session: AsyncSession, contact_id: int) -> tuple[ContactIdentity, ...]:
+    rows = await session.scalars(
+        select(ContactIdentity).where(ContactIdentity.contact_id == contact_id).order_by(ContactIdentity.id)
+    )
+    return tuple(rows.all())
 
 
 async def _has_something_to_answer(session: AsyncSession, request: ReplyRequest, shopper: _Shopper) -> bool:
@@ -528,14 +579,23 @@ async def _context(session: AsyncSession, shopper: _Shopper, route: Recipient) -
     )
     return AgentContext(
         business=shopper.business,
-        contact_name=display_name(shopper.contact, [shopper.identity]),
-        reply_channel="a private reply to their comment" if route.kind == "comment" else "an Instagram DM",
+        contact_name=display_name(shopper.contact, list(shopper.identities)),
+        platform=platform_name(shopper.engagement_channel),
+        reply_channel=_reply_channel_label(shopper.inbox, route),
         open_deals=with_products,
         source_post=post,
         recent_comments=tuple(c for c in comments if c),
         history=history,
         new_comment=shopper.engagement.text if shopper.engagement else None,
     )
+
+
+def _reply_channel_label(inbox: Channel, route: Recipient) -> str:
+    if route.kind == "comment":
+        return "a private reply to their comment" + (
+            " (it arrives in Messenger)" if inbox == Channel.MESSENGER else ""
+        )
+    return "a Messenger message" if inbox == Channel.MESSENGER else "an Instagram DM"
 
 
 def _run(

@@ -32,7 +32,8 @@ _SIZE = re.compile(
     r"\b(xxs|xs|xxl|xl|small|medium|large)\b|\bsize\s+(\w{1,3})\b|^\W*(s|m|l)\W*(?:please|pls)?\W*$"
 )
 _COLOUR = re.compile(
-    r"\b(black|white|red|blue|green|sage|pink|beige|natural|navy|grey|gray|brown|yellow|purple|silver|gold)\b"
+    r"\b(black|white|red|blue|green|sage|pink|beige|natural|navy|grey|gray|brown|yellow|purple|silver|gold|"
+    r"sand|olive|indigo|rust)\b"
 )
 _NUMBERS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
 _QUANTITY = re.compile(
@@ -42,7 +43,7 @@ _QUANTITY = re.compile(
 _SHIPPING = re.compile(r"\b(ship\w*|deliver\w*|returns?|exchange|cod|cash on delivery|pay on delivery)\b")
 _OBJECTION = re.compile(r"\b(expensive|too much|pricey|cheaper|discount|coupon|sale)\b")
 _DEAL_LINE = re.compile(r"^- (.+?) \(product id (\d+)(?:, ([^)]+))?\), stage (\w+)", re.MULTILINE)
-_HANDLE = re.compile(r"Shopper: @([\w.]+)")
+_HANDLE = re.compile(r"@([\w.]+)")
 ALREADY_SENT = "Your checkout link is in my last message. Let me know if you have any trouble!"
 NOT_FOUND = "Hmm, I couldn't find that in our shop. What are you looking for? Happy to help!"
 _CONTEXT_PREFIX = "Context from this shopper"
@@ -131,7 +132,7 @@ def _compose(
     results: dict[str, dict[str, Any]],
     messages: Sequence[ChatMessage],
 ) -> str:
-    handle = _HANDLE.search(facts)
+    handle = _HANDLE.fullmatch(_shopper_name(messages))
     greeting = f"Hi {handle.group(1)}! " if handle and _is_first_reply(messages) else ""
     if "hand_off_to_owner" in results:
         return "Thanks for letting us know. I've passed this to the owner, who will reply here shortly 🙏"
@@ -203,6 +204,19 @@ def _tool_results_this_turn(messages: Sequence[ChatMessage]) -> dict[str, dict[s
         if message.role == "tool" and message.tool_call_id in names:
             results[names[message.tool_call_id]] = json.loads(message.content or "{}")
     return results
+
+
+def _shopper_name(messages: Sequence[ChatMessage]) -> str:
+    context = next(
+        (m.content for m in messages if m.role == "user" and (m.content or "").startswith(_CONTEXT_PREFIX)),
+        None,
+    )
+    try:
+        data = json.loads(context.split(": ", 1)[1]) if context else {}
+    except (IndexError, ValueError):
+        return ""
+    name = data.get("name") if isinstance(data, dict) else None
+    return name if isinstance(name, str) else ""
 
 
 def _shop_notes(messages: Sequence[ChatMessage]) -> str:

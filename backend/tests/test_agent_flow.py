@@ -66,6 +66,18 @@ async def _deal(client: httpx.AsyncClient) -> dict:
     return deal
 
 
+@pytest.mark.parametrize("colour", ["sand", "olive", "indigo", "rust"])
+async def test_the_catalogs_colours_are_noted(shop: httpx.AsyncClient, colour: str) -> None:
+    _, post = await _dress_post(shop)
+    await shop.post(
+        "/api/simulator/instagram/comment",
+        json={"post_id": post["id"], "username": "maya.shops", "text": "price?"},
+    )
+    await _say(shop, f"{colour.title()} in size L please")
+    deal = await _deal(shop)
+    assert (deal["stage"], deal["details"]) == ("qualified", {"size": "L", "colour": colour})
+
+
 async def test_comment_to_won(agent_app: FastAPI, shop: httpx.AsyncClient) -> None:
     dress, post = await _dress_post(shop)
 
@@ -173,6 +185,7 @@ async def test_agent_status_and_run_log(shop: httpx.AsyncClient) -> None:
         "model": "mock-sales-brain",
         "is_mock": True,
         "instagram_sending": "recorded",
+        "messenger_sending": "recorded",
         "payments": "test_checkout",
     }
     await _dress_post(shop)

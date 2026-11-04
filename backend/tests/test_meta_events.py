@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.meta.events import InstagramComment, InstagramMessage, PayloadError, parse_meta_payload
+from app.meta.events import Comment, DirectMessage, PayloadError, parse_meta_payload
 from tests import meta_payloads as meta
 
 
@@ -44,7 +44,7 @@ def test_unhandled_fields_and_objects_are_skipped_not_failed() -> None:
 
 def test_echo_contact_is_the_recipient() -> None:
     [message] = parse_meta_payload(meta.echo_message("1", mid="m", recipient_id="shopper", text="hi")).events
-    assert isinstance(message, InstagramMessage)
+    assert isinstance(message, DirectMessage)
     assert message.is_echo
     assert message.contact_external_id == "shopper"
 
@@ -54,7 +54,7 @@ def test_attachment_only_message_has_no_text() -> None:
     del payload["entry"][0]["messaging"][0]["message"]["text"]
     payload["entry"][0]["messaging"][0]["message"]["attachments"] = [{"type": "image"}]
     [message] = parse_meta_payload(payload).events
-    assert isinstance(message, InstagramMessage)
+    assert isinstance(message, DirectMessage)
     assert message.text is None
 
 
@@ -64,7 +64,7 @@ def test_comment_reply_keeps_parent_id() -> None:
     )
     payload["entry"][0]["changes"][0]["value"]["parent_id"] = "c1"
     [comment] = parse_meta_payload(payload).events
-    assert isinstance(comment, InstagramComment)
+    assert isinstance(comment, Comment)
     assert comment.parent_id == "c1"
 
 
@@ -89,7 +89,7 @@ def test_bad_items_are_reported_without_dropping_good_ones() -> None:
         ],
     }
     parsed = parse_meta_payload(payload)
-    assert [e.message_id for e in parsed.events if isinstance(e, InstagramMessage)] == ["m.good"]
+    assert [e.message_id for e in parsed.events if isinstance(e, DirectMessage)] == ["m.good"]
     assert len(parsed.errors) == 3
     assert parsed.errors[0].startswith("entry[0]")
 
@@ -99,7 +99,7 @@ def test_standby_messages_are_parsed_and_flagged() -> None:
     entry = payload["entry"][0]
     entry["standby"] = entry.pop("messaging")
     [message] = parse_meta_payload(payload).events
-    assert isinstance(message, InstagramMessage)
+    assert isinstance(message, DirectMessage)
     assert message.standby is True
 
 

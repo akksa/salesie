@@ -113,3 +113,71 @@ def echo_message(
             }
         ],
     }
+
+
+# --- Facebook Page (object "page") ----------------------------------------------------------------
+# Sources: developers.facebook.com/documentation/pages-api/webhooks-for-pages (feed) and
+# developers.facebook.com/documentation/business-messaging/messenger-platform/webhooks/webhook-events/messages
+
+
+def page_comment(
+    page_id: str,
+    *,
+    comment_id: str,
+    post_id: str,
+    from_id: str,
+    name: str,
+    text: str,
+    created_time: int = 1_730_000_000,
+    parent_id: str | None = None,
+) -> dict[str, Any]:
+    """Facebook sets parent_id to the post for top-level comments, and to the comment for replies."""
+    return {
+        "object": "page",
+        "entry": [
+            {
+                "id": page_id,
+                "time": created_time + 2,
+                "changes": [
+                    {
+                        "field": "feed",
+                        "value": {
+                            "from": {"id": from_id, "name": name},
+                            "post": {"status_type": "added_photos", "is_published": True},
+                            "message": text,
+                            "post_id": post_id,
+                            "comment_id": comment_id,
+                            "created_time": created_time,
+                            "item": "comment",
+                            "parent_id": parent_id or post_id,
+                            "verb": "add",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def messenger_message(
+    page_id: str, *, mid: str, psid: str, text: str, timestamp_ms: int = 1_730_000_100_123, echo: bool = False
+) -> dict[str, Any]:
+    sender, recipient = (page_id, psid) if echo else (psid, page_id)
+    message: dict[str, Any] = {"mid": mid, "text": text} | ({"is_echo": True} if echo else {})
+    return {
+        "object": "page",
+        "entry": [
+            {
+                "id": page_id,
+                "time": timestamp_ms,
+                "messaging": [
+                    {
+                        "sender": {"id": sender},
+                        "recipient": {"id": recipient},
+                        "timestamp": timestamp_ms,
+                        "message": message,
+                    }
+                ],
+            }
+        ],
+    }

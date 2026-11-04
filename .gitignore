@@ -10,3 +10,6 @@ htmlcov/
 node_modules/
 dist/
 .playwright-mcp/
+
+# Unused image drafts (the chosen ones are in docs/brand)
+docs/brand/raw/

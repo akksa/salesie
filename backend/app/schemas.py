@@ -262,6 +262,7 @@ class AgentStatusOut(BaseModel):
     model: str
     is_mock: bool
     instagram_sending: str  # "live" (Send API) or "recorded" (kept in Salesie only)
+    messenger_sending: str
     payments: str
 
 

@@ -80,7 +80,7 @@ export function runNote(run: AgentRunOut, pausedReason?: string | null): string 
     case "handed_off":
       return `Handed to you · ${handoffReason(run) ?? pausedReason ?? "needs a person"}`;
     case "blocked":
-      return `Couldn't reply: ${run.error ?? "Instagram's messaging window doesn't allow it"}`;
+      return `Couldn't reply: ${run.error ?? "Meta's messaging window doesn't allow it"}`;
     case "failed":
       return `Agent error: ${run.error ?? "unknown error"}`;
     case "skipped":

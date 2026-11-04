@@ -98,7 +98,7 @@ export function Composer({ conversationId, agentPaused }: { conversationId: numb
           {agentPaused ? "The agent is paused here." : "Sending pauses the agent on this chat."}{" "}
           {IS_MAC ? "⌘" : "Ctrl"}+Enter to send
         </span>
-        {/* Hidden until 80% of Instagram's byte limit (emoji/accents count as 2-4 bytes). */}
+        {/* Hidden until 80% of Meta's byte limit (emoji/accents count as 2-4 bytes). */}
         {bytes >= MAX_BYTES * 0.8 ? (
           <span
             aria-live="polite"
@@ -108,7 +108,7 @@ export function Composer({ conversationId, agentPaused }: { conversationId: numb
             )}
             title={`${bytes}/${MAX_BYTES} bytes; emoji and accented letters use more than one byte`}
           >
-            {tooLong ? "Too long for Instagram: shorten it a little" : "Almost at Instagram's limit"}
+            {tooLong ? "Too long to send: shorten it a little" : "Almost at the message limit"}
           </span>
         ) : null}
       </p>

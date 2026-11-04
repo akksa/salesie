@@ -4,11 +4,12 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
-from app.channels.instagram import (
+from app.channels.messaging import (
     Blocked,
     GraphSender,
-    InstagramSendError,
     Recipient,
+    SendError,
+    SentMessage,
     fit_message,
     reply_route,
 )
@@ -40,7 +41,7 @@ async def test_send_api_request(recipient: Recipient, expected: dict) -> None:
     assert str(request.url) == "https://graph.instagram.com/v23.0/17841400000000001/messages"
     assert request.headers["authorization"] == "Bearer IGAA-test"
     assert json.loads(request.content) == {"recipient": expected, "message": {"text": "Hi there"}}
-    assert message_id == "aWdfZAG1"
+    assert message_id == SentMessage("aWdfZAG1", "9100")
 
 
 @pytest.mark.parametrize(
@@ -51,7 +52,7 @@ async def test_send_api_request(recipient: Recipient, expected: dict) -> None:
     ],
 )
 async def test_send_api_failures_raise(response: httpx.Response) -> None:
-    with pytest.raises(InstagramSendError):
+    with pytest.raises(SendError):
         await sender_with(lambda request: response).send_text("1", Recipient("user", "9100"), "Hi")
 
 

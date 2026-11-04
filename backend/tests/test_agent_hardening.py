@@ -15,9 +15,9 @@ from sqlalchemy import select
 from app.agent.llm import AssistantTurn, ChatMessage, LLMError, ToolSpec
 from app.agent.muse import MuseClient
 from app.agent.runner import final_text
-from app.channels.instagram import GraphSender, InstagramSendError, Recipient
+from app.channels.messaging import GraphSender, Recipient, SendError
 from app.crm.ingest import ingest_event
-from app.meta.events import InstagramMessage
+from app.meta.events import DirectMessage
 from app.meta.simulator import simulated_user_id
 from app.models import Business, Channel, Contact, ContactIdentity
 from tests import meta_payloads as meta
@@ -235,6 +235,17 @@ async def test_draft_products_are_never_shown_to_the_model(app: FastAPI, client:
     assert "Secret collab bag" not in everything and "450" not in everything
 
 
+def test_test_settings_ignore_the_real_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """backend/.env and the shell hold real keys: a test must never pick them up and reach Meta."""
+    monkeypatch.setenv("MODEL_API_KEY", "real-key-from-the-shell")
+    monkeypatch.setenv("FACEBOOK_GRAPH_URL", "https://attacker.invalid/v1")
+    monkeypatch.setenv("AGENT_TURNS_PER_CONTACT_PER_DAY", "999999")
+    settings = make_settings()
+    assert settings.model_api_key is None
+    assert settings.facebook_graph_url == "https://graph.facebook.com/v26.0"
+    assert settings.agent_turns_per_contact_per_day == 40
+
+
 # --- outbound text -------------------------------------------------------------------------------------
 
 
@@ -259,13 +270,29 @@ def test_links_and_bare_domains_are_stripped(text: str) -> None:
         "Hi @maya.shops, sizes are XS-XL.",
         "Thanks ana.styles 😊",
         "It's 3.5 cm wide, e.g. for keys.",
+        "The dress is \u20b92,499.00 in sizes XS-XL.",
+        "Delivered in 3-6 working days, i.e. by Monday.",
     ],
 )
 def test_instagram_handles_and_ordinary_text_are_not_mistaken_for_links(text: str) -> None:
     assert final_text(text, None) == text
 
 
-@pytest.mark.parametrize("text", ["Pay at evil.com now", "Pay at secure-pay.shop now", "Pay at x.y.co now"])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Pay at evil.com now",
+        "Pay at secure-pay.shop now",
+        "Pay at x.y.co now",
+        "Pay at bloomthread-refunds.eu now",  # any two-letter country domain
+        "Pay at bloom-thread.es now",
+        "Pay at shop.bloomthread.zip now",
+        "Pay at \u0440\u0430\u0443\u0440\u0430l.com now",  # Cyrillic look-alike of paypal.com
+        "Pay at bloomthread\uff0ecom now",  # fullwidth dot
+        "Pay at bloomthread\u3002com now",  # ideographic full stop: apps treat it as a dot
+        "Pay at bloomthread\uff0ecom/pay now",
+    ],
+)
 def test_bare_domains_with_common_tlds_are_stripped(text: str) -> None:
     assert final_text(text, None) == "Pay at now"
 
@@ -273,6 +300,19 @@ def test_bare_domains_with_common_tlds_are_stripped(text: str) -> None:
 def test_the_real_payment_link_survives_the_filter() -> None:
     link = "http://localhost:8000/pay/REALtoken_123456"
     assert final_text(f"Here you go: {link}.", link) == f"Here you go: {link}."
+
+
+@pytest.mark.parametrize(
+    ("text", "sent"),
+    [
+        ("The **Linen Wrap Dress** is **₹2,499.00**.", "The Linen Wrap Dress is ₹2,499.00."),
+        ("### Sizes\nXS-XL", "Sizes\nXS-XL"),
+        ("Rated 5* by 200 shoppers, hi @__maya__!", "Rated 5* by 200 shoppers, hi @__maya__!"),
+    ],
+)
+def test_markdown_is_sent_as_plain_text(text: str, sent: str) -> None:
+    # Instagram and Messenger show markdown symbols exactly as typed; Muse Spark likes **bold**.
+    assert final_text(text, None) == sent
 
 
 async def test_upstream_errors_never_echo_our_secrets() -> None:
@@ -299,7 +339,7 @@ async def test_upstream_errors_never_echo_our_secrets() -> None:
         graph_url="https://graph.instagram.com/v23.0",
         transport=httpx.MockTransport(graph_400),
     )
-    with pytest.raises(InstagramSendError) as sent:
+    with pytest.raises(SendError) as sent:
         await graph.send_text("1", Recipient("user", "2"), "hi")
     assert "IGAAtoken-abc" not in str(sent.value)
 
@@ -314,7 +354,7 @@ async def test_a_message_that_arrives_while_the_model_thinks_still_gets_answered
         async def complete(self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec]) -> AssistantTurn:
             if not self.seen:  # first turn: the shopper sends another message meanwhile
                 async with app.state.sessionmaker() as session:
-                    late = InstagramMessage(
+                    late = DirectMessage(
                         IG_ACCOUNT_ID,
                         "m.late",
                         simulated_user_id("maya"),

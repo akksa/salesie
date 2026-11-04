@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # Instagram sending. Without a token, replies are recorded in Salesie but not sent to Meta.
     instagram_access_token: SecretStr | None = None
     instagram_graph_url: str = "https://graph.instagram.com/v23.0"
+    # Facebook Page: Messenger replies and private replies to Page comments, with a Page access token.
+    facebook_page_access_token: SecretStr | None = None
+    facebook_graph_url: str = "https://graph.facebook.com/v26.0"
 
     # Where shoppers open payment links (this server's public URL).
     public_base_url: str = "http://localhost:8000"
@@ -65,7 +68,7 @@ class Settings(BaseSettings):
             raise ValueError(f"must be at least {MIN_OWNER_PASSWORD_LENGTH} characters")
         return value
 
-    @field_validator("model_api_key", "instagram_access_token", mode="before")
+    @field_validator("model_api_key", "instagram_access_token", "facebook_page_access_token", mode="before")
     @classmethod
     def empty_means_unset(cls, value: object) -> object:
         return None if isinstance(value, str) and not value.strip() else value
@@ -77,16 +80,18 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def guard_live_instagram(self) -> Self:
-        if self.instagram_access_token is None:
+    def guard_live_sending(self) -> Self:
+        if self.instagram_access_token is None and self.facebook_page_access_token is None:
             return self
         if not self.allow_test_checkout_with_live_instagram:
             raise ValueError(
-                "INSTAGRAM_ACCESS_TOKEN is set but payments use the test checkout (no money is taken). "
+                "A Meta access token is set but payments use the test checkout (no money is taken). "
                 "Set ALLOW_TEST_CHECKOUT_WITH_LIVE_INSTAGRAM=true only for a supervised demo."
             )
         if not self.public_base_url.startswith("https://"):
-            raise ValueError("PUBLIC_BASE_URL must be https:// when messaging real Instagram users")
+            raise ValueError(
+                "PUBLIC_BASE_URL must be https:// when messaging real Instagram or Facebook users"
+            )
         return self
 
 

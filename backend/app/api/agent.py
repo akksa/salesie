@@ -18,6 +18,7 @@ async def agent_status(request: Request) -> AgentStatusOut:
         model=agent.llm.model_name,
         is_mock=agent.llm.model_name.startswith("mock"),
         instagram_sending=agent.live_sender.mode if agent.live_sender else agent.recorder.mode,
+        messenger_sending=agent.messenger_sender.mode if agent.messenger_sender else agent.recorder.mode,
         payments=agent.payments.name,
     )
 

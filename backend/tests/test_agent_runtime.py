@@ -12,7 +12,7 @@ from sqlalchemy import func, select, update
 
 from app.agent.llm import AssistantTurn, ChatMessage, LLMError, ToolCall, ToolSpec
 from app.agent.runner import MAX_STEPS
-from app.channels.instagram import Recipient
+from app.channels.messaging import Recipient, SentMessage
 from app.models import Business, Deal, DealStage, Message, PaymentLink, Product
 from tests import meta_payloads as meta
 from tests.conftest import IG_ACCOUNT_ID, OWNER_AUTH, _build_app, create_product, deliver, make_settings
@@ -42,6 +42,7 @@ class SpySender:
         self.sent: list[tuple[str, Recipient, str]] = []
         self.tags: list[str | None] = []
         self._count = 0  # Meta's message ids are unique: keep counting even if a test clears `sent`
+        self.recipient_id: str | None = None  # what Meta reports back (a Messenger id after a private reply)
 
     @property
     def mode(self) -> str:
@@ -49,11 +50,11 @@ class SpySender:
 
     async def send_text(
         self, account_id: str, recipient: Recipient, text: str, tag: str | None = None
-    ) -> str:
+    ) -> SentMessage:
         self.sent.append((account_id, recipient, text))
         self.tags.append(tag)
         self._count += 1
-        return f"mid.live.{self._count}"
+        return SentMessage(f"mid.live.{self._count}", self.recipient_id)
 
 
 def call(name: str, **arguments: object) -> AssistantTurn:

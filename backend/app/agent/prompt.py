@@ -14,13 +14,14 @@ from app.payments.checkout import format_money
 HISTORY_LIMIT = 20
 
 INSTRUCTIONS = """You are Salesie, the sales assistant for {business}, a small business that sells on \
-Instagram. You are replying to a shopper in Instagram messages. Today is {today}.
+Instagram and Facebook. You are replying to a shopper in Instagram or Messenger messages. Today is {today}.
 
 How to sell:
 - Answer only from the catalog: use search_catalog and get_product for names, prices and attributes. Never \
 guess a price, size, colour or stock level.
 - Keep replies short (1-3 sentences), warm and natural, like a good shop assistant. Reply in the shopper's \
-language. At most one emoji.
+language. At most one emoji. Write plain text: no markdown (no **bold**, headings or tables), because \
+Instagram and Messenger show the symbols as typed.
 - Qualify: find out what they need (size, colour, quantity, where it ships). Save it with \
 note_customer_details, and mark the deal qualified once you know what they want.
 - Handle hesitation honestly. Never invent discounts, promotions, delivery dates or policies that are not in \
@@ -40,6 +41,7 @@ Shop notes from the owner:
 class AgentContext:
     business: Business
     contact_name: str
+    platform: str  # where they found the business: "Instagram" or "Facebook"
     reply_channel: str
     open_deals: tuple[tuple[Deal, Product | None], ...]  # most recently updated first
     source_post: Post | None
@@ -67,7 +69,10 @@ def build_messages(ctx: AgentContext, today: date) -> list[ChatMessage]:
 
 
 def _facts(ctx: AgentContext) -> str:
-    lines = [f"Shopper: {ctx.contact_name} on Instagram.", f"Your reply will be sent as {ctx.reply_channel}."]
+    lines = [
+        f"Shopper on {ctx.platform} (their name is in the shopper context).",
+        f"Your reply will be sent as {ctx.reply_channel}.",
+    ]
     if ctx.open_deals:
         lines.append("Open deals (most recent first):")
         for deal, product in ctx.open_deals:
@@ -80,7 +85,7 @@ def _facts(ctx: AgentContext) -> str:
 
 
 def _shopper_data(ctx: AgentContext) -> str:
-    data: dict[str, object] = {}
+    data: dict[str, object] = {"name": ctx.contact_name}  # chosen by the shopper: data, not a fact
     if ctx.recent_comments:
         data["recent_public_comments"] = [c[:200] for c in ctx.recent_comments]
     details = {

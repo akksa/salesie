@@ -1,9 +1,11 @@
 """Turn raw Meta webhook payloads into typed events. Pure functions, no I/O.
 
-Instagram sends two comment envelopes depending on the app's login flow:
+Instagram (`object: "instagram"`) sends two comment envelopes depending on the app's login flow:
   - Facebook Login:  entry[].changes[] = [{field, value: {comment_id, ...}}]
   - Business Login:  entry[] carries field/value directly, value.id is the comment id
-Both are accepted. Timestamps arrive as seconds or milliseconds.
+Facebook Pages (`object: "page"`) send comments as `feed` changes ({item: "comment", verb: "add",
+comment_id, post_id, from: {id, name}, message, created_time}) and Messenger DMs in entry[].messaging[],
+shaped like Instagram DMs. Timestamps arrive as seconds or milliseconds.
 
 Meta batches several entries and items per delivery, so a malformed entry or item is reported in
 ParsedPayload.errors instead of discarding the valid ones. Only a broken envelope raises PayloadError.
@@ -13,7 +15,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from app.models import Channel
+
 _MILLISECONDS_THRESHOLD = 10**11  # 10-digit values are seconds, 13-digit values are milliseconds
+# object type -> (channel of its comments, channel of its private messages)
+_HANDLED_OBJECTS = {
+    "instagram": (Channel.INSTAGRAM, Channel.INSTAGRAM),
+    "page": (Channel.FACEBOOK, Channel.MESSENGER),
+}
 
 
 class PayloadError(ValueError):
@@ -21,19 +30,30 @@ class PayloadError(ValueError):
 
 
 @dataclass(frozen=True)
-class InstagramComment:
-    account_id: str
+class Comment:
+    """A public comment on one of the business's posts (Instagram media or Facebook Page post)."""
+
+    account_id: str  # the business's Instagram account id or Facebook Page id
     comment_id: str
-    media_id: str
+    media_id: str  # Instagram media id or Facebook post id
     from_id: str
     from_username: str | None
     text: str | None
     parent_id: str | None
     occurred_at: datetime
+    channel: Channel = Channel.INSTAGRAM
+    from_name: str | None = None  # Facebook gives a display name instead of a username
+
+    @property
+    def is_thread_reply(self) -> bool:
+        """A reply to another comment. Facebook sets parent_id to the post itself for top-level comments."""
+        return self.parent_id is not None and self.parent_id != self.media_id
 
 
 @dataclass(frozen=True)
-class InstagramMessage:
+class DirectMessage:
+    """A private message: Instagram DM or Facebook Messenger."""
+
     account_id: str
     message_id: str
     sender_id: str
@@ -42,6 +62,7 @@ class InstagramMessage:
     is_echo: bool
     occurred_at: datetime
     standby: bool = False  # delivered while another app owns the thread (handover protocol)
+    channel: Channel = Channel.INSTAGRAM
 
     @property
     def contact_external_id(self) -> str:
@@ -49,7 +70,7 @@ class InstagramMessage:
         return self.recipient_id if self.is_echo else self.sender_id
 
 
-type MetaEvent = InstagramComment | InstagramMessage
+type MetaEvent = Comment | DirectMessage
 
 
 @dataclass(frozen=True)
@@ -76,9 +97,9 @@ def parse_meta_payload(payload: object) -> ParsedPayload:
     entries = body.get("entry")
     if not isinstance(entries, list):
         raise PayloadError("entry must be a list")
-    if object_type != "instagram":
+    if object_type not in _HANDLED_OBJECTS:
         return ParsedPayload(object_type, (), (f"object {object_type!r} is not handled yet",))
-    results = [_parse_entry_safely(index, entry) for index, entry in enumerate(entries)]
+    results = [_parse_entry_safely(object_type, index, entry) for index, entry in enumerate(entries)]
     return ParsedPayload(
         object_type,
         events=tuple(event for r in results for event in r.events),
@@ -87,14 +108,15 @@ def parse_meta_payload(payload: object) -> ParsedPayload:
     )
 
 
-def _parse_entry_safely(index: int, entry: object) -> _EntryResult:
+def _parse_entry_safely(object_type: str, index: int, entry: object) -> _EntryResult:
     try:
-        return _parse_instagram_entry(index, _dict(entry, "entry"))
+        return _parse_entry(object_type, index, _dict(entry, "entry"))
     except PayloadError as exc:
         return _EntryResult(errors=(f"entry[{index}]: {exc}",))
 
 
-def _parse_instagram_entry(index: int, entry: dict[str, Any]) -> _EntryResult:
+def _parse_entry(object_type: str, index: int, entry: dict[str, Any]) -> _EntryResult:
+    comment_channel, message_channel = _HANDLED_OBJECTS[object_type]
     account_id = _str(entry.get("id"), "entry.id")
     changes = entry.get("changes")
     if changes is None and "field" in entry:
@@ -105,12 +127,11 @@ def _parse_instagram_entry(index: int, entry: dict[str, Any]) -> _EntryResult:
     for position, change in enumerate(_list(changes, "entry.changes")):
         where = f"entry[{index}].changes[{position}]"
         try:
-            change = _dict(change, "change")
-            if change.get("field") == "comments":
-                value = _dict(change.get("value"), "value")
-                events.append(_parse_comment(account_id, value, entry.get("time")))
+            parsed = _parse_change(comment_channel, account_id, _dict(change, "change"), entry.get("time"))
+            if isinstance(parsed, Comment):
+                events.append(parsed)
             else:
-                skipped.append(f"{where}: field {change.get('field')!r}")
+                skipped.append(f"{where}: {parsed}")
         except PayloadError as exc:
             errors.append(f"{where}: {exc}")
     for key in ("messaging", "standby"):
@@ -119,7 +140,8 @@ def _parse_instagram_entry(index: int, entry: dict[str, Any]) -> _EntryResult:
             try:
                 item = _dict(item, key)
                 if "message" in item:
-                    events.append(_parse_message(account_id, item, standby=key == "standby"))
+                    standby = key == "standby"
+                    events.append(_parse_message(account_id, item, standby=standby, channel=message_channel))
                 else:
                     skipped.append(f"{where}: keys {sorted(item)}")
             except PayloadError as exc:
@@ -129,10 +151,25 @@ def _parse_instagram_entry(index: int, entry: dict[str, Any]) -> _EntryResult:
     return _EntryResult(tuple(events), tuple(skipped), tuple(errors))
 
 
-def _parse_comment(account_id: str, value: dict[str, Any], entry_time: object) -> InstagramComment:
+def _parse_change(
+    channel: Channel, account_id: str, change: dict[str, Any], entry_time: object
+) -> Comment | str:
+    """A Comment, or a note saying why the change was skipped."""
+    field = change.get("field")
+    if channel == Channel.INSTAGRAM and field == "comments":
+        return _parse_instagram_comment(account_id, _dict(change.get("value"), "value"), entry_time)
+    if channel == Channel.FACEBOOK and field == "feed":
+        value = _dict(change.get("value"), "value")
+        if value.get("item") == "comment" and value.get("verb") == "add":
+            return _parse_page_comment(account_id, value, entry_time)
+        return f"feed {value.get('item')!r}/{value.get('verb')!r}"
+    return f"field {field!r}"
+
+
+def _parse_instagram_comment(account_id: str, value: dict[str, Any], entry_time: object) -> Comment:
     sender = _dict(value.get("from"), "value.from")
     media = _dict(value.get("media"), "value.media")
-    return InstagramComment(
+    return Comment(
         account_id=account_id,
         comment_id=_str(value.get("comment_id") or value.get("id"), "value.comment_id"),
         media_id=_str(media.get("id"), "value.media.id"),
@@ -140,13 +177,31 @@ def _parse_comment(account_id: str, value: dict[str, Any], entry_time: object) -
         from_username=_optional_str(sender.get("username")),
         text=_optional_str(value.get("text")),
         parent_id=_optional_str(value.get("parent_id")),
-        occurred_at=_timestamp(entry_time),  # comment values carry no time of their own
+        occurred_at=_timestamp(entry_time),  # Instagram comment values carry no time of their own
     )
 
 
-def _parse_message(account_id: str, item: dict[str, Any], *, standby: bool) -> InstagramMessage:
+def _parse_page_comment(page_id: str, value: dict[str, Any], entry_time: object) -> Comment:
+    sender = _dict(value.get("from"), "value.from")
+    return Comment(
+        account_id=page_id,
+        comment_id=_str(value.get("comment_id"), "value.comment_id"),
+        media_id=_str(value.get("post_id"), "value.post_id"),
+        from_id=_str(sender.get("id"), "value.from.id"),
+        from_username=None,
+        text=_optional_str(value.get("message")),
+        parent_id=_optional_str(value.get("parent_id")),
+        occurred_at=_timestamp(value.get("created_time") or entry_time),
+        channel=Channel.FACEBOOK,
+        from_name=_optional_str(sender.get("name")),
+    )
+
+
+def _parse_message(
+    account_id: str, item: dict[str, Any], *, standby: bool, channel: Channel
+) -> DirectMessage:
     message = _dict(item.get("message"), "messaging.message")
-    return InstagramMessage(
+    return DirectMessage(
         account_id=account_id,
         message_id=_str(message.get("mid"), "message.mid"),
         sender_id=_str(_dict(item.get("sender"), "messaging.sender").get("id"), "sender.id"),
@@ -155,6 +210,7 @@ def _parse_message(account_id: str, item: dict[str, Any], *, standby: bool) -> I
         is_echo=message.get("is_echo") is True,
         occurred_at=_timestamp(item.get("timestamp")),
         standby=standby,
+        channel=channel,
     )
 
 

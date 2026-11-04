@@ -266,7 +266,7 @@ class Deal(Base):
     channel: Mapped[Channel] = mapped_column(_enum(Channel))
     stage: Mapped[DealStage] = mapped_column(_enum(DealStage), default=DealStage.NEW)
     amount_minor: Mapped[int | None] = mapped_column(Integer)
-    # What the agent learned while qualifying, e.g. {"size": "M", "ships_to": "Austin"}.
+    # What the agent learned while qualifying, e.g. {"size": "M", "ships_to": "Pune"}.
     details: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = mapped_column(

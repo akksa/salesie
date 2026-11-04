@@ -16,32 +16,73 @@ from app.models import Base, Business, Channel, Post, Product
 
 PLACEHOLDER_IG_ACCOUNT_ID = "17841400000000000"
 SHOP_NOTES = (
-    "Free shipping nationwide, 3-5 business days.\n"
-    "Returns within 14 days if unworn with tags.\n"
-    "Payment by card through a secure checkout link."
+    "Free shipping across India on every order; delivery in 3-6 working days.\n"
+    "Launch price on the Linen Co-ord Set: ₹2,999 for the first 20 orders, while stock lasts.\n"
+    "Returns within 7 days if unworn with tags.\n"
+    "Pay securely through the checkout link we send you."
 )
 
+# Product photos made with Muse Image (docs/brand), served from the public repo so the links never expire.
+IMAGES = "https://raw.githubusercontent.com/akksa/salesie/main/docs/brand"
+
+# Prices are in paise (₹1 = 100). The "offers" are products and shop notes: the agent never invents discounts.
 PRODUCTS = [
     {
-        "name": "Linen wrap dress",
-        "description": "Breathable linen wrap dress with tie waist.",
-        "attributes": {"color": "sage", "sizes": "XS-XL", "material": "linen"},
-        "price_minor": 6800,
-        "post": ("18000000000000101", "Linen wrap dress is back in sage 🌿 Sizes XS-XL. Comment 'price'!"),
+        "name": "Linen Wrap Dress",
+        "image_url": f"{IMAGES}/03-linen-wrap-dress.jpg",
+        "description": "Breathable washed-linen wrap dress with a tie waist and flutter sleeves.",
+        "attributes": {"colours": "sage, sand, navy", "sizes": "XS-XL", "material": "100% linen"},
+        "price_minor": 249900,
+        "post": (
+            "18000000000000101",
+            "Our Linen Wrap Dress is back in sage, sand and navy 🌿 Comment 'price'!",
+        ),
     },
     {
-        "name": "Hand-painted canvas tote",
-        "description": "One-of-a-kind tote, painted by hand.",
-        "attributes": {"color": "natural", "size": "38 x 42 cm"},
-        "price_minor": 3200,
-        "post": ("18000000000000102", "Every tote is painted by hand, so no two are the same 🎨"),
+        "name": "Block-Print Cotton Top",
+        "image_url": f"{IMAGES}/04-block-print-top.jpg",
+        "description": "Hand block-printed cotton top with a relaxed fit.",
+        "attributes": {"colours": "indigo, rust", "sizes": "S-XL", "material": "cotton"},
+        "price_minor": 129900,
+        "post": (
+            "18000000000000102",
+            "Hand block-printed, one stamp at a time: the Block-Print Cotton Top 💙",
+        ),
     },
     {
-        "name": "Silver leaf earrings",
+        "name": "Linen Co-ord Set",
+        "image_url": f"{IMAGES}/05-linen-coord-set.jpg",
+        "description": "Matching linen shirt and drawstring trousers. Launch price for the first 20 orders.",
+        "attributes": {"colours": "white, olive", "sizes": "S-XL", "material": "100% linen"},
+        "price_minor": 299900,
+        "post": (
+            "18000000000000103",
+            "New: the Linen Co-ord Set at a launch price of ₹2,999 for the first 20 orders ✨",
+        ),
+    },
+    {
+        "name": "Hand-Painted Canvas Tote",
+        "image_url": f"{IMAGES}/06-canvas-tote.jpg",
+        "description": "Sturdy canvas tote, painted by hand, so no two are the same.",
+        "attributes": {"colour": "natural", "size": "38 x 42 cm"},
+        "price_minor": 89900,
+        "post": ("18000000000000104", "Every Hand-Painted Canvas Tote is one of a kind 🎨"),
+    },
+    {
+        "name": "Silver Leaf Earrings",
+        "image_url": f"{IMAGES}/07-silver-leaf-earrings.jpg",
         "description": "Lightweight sterling silver leaf drops.",
         "attributes": {"material": "sterling silver"},
-        "price_minor": 2400,
-        "post": ("18000000000000103", "Weekend drop: silver leaf earrings ✨ Only 12 pairs."),
+        "price_minor": 74900,
+        "post": ("18000000000000105", "Silver Leaf Earrings: light enough to forget you're wearing them ✨"),
+    },
+    {
+        "name": "Weekend Bundle",
+        "image_url": f"{IMAGES}/08-weekend-bundle.jpg",
+        "description": "A Hand-Painted Canvas Tote and Silver Leaf Earrings together; you save ₹199.",
+        "attributes": {"includes": "canvas tote + silver leaf earrings", "you save": "₹199"},
+        "price_minor": 144900,
+        "post": ("18000000000000106", "The Weekend Bundle: tote + earrings for ₹1,449 (save ₹199) 🛍️"),
     },
 ]
 
@@ -58,7 +99,7 @@ async def seed(*, reset: bool = False) -> str:
                 return "A business already exists; nothing to do."
             business = Business(
                 name="Bloom & Thread",
-                currency="USD",
+                currency="INR",
                 ig_account_id=PLACEHOLDER_IG_ACCOUNT_ID,
                 sales_notes=SHOP_NOTES,
             )

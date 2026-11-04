@@ -10,7 +10,7 @@ from app.agent.runner import ReplyRequest
 from app.crm import deals
 from app.crm.contacts import record_activity, remember_username, upsert_contact
 from app.crm.store import get_or_create, lock_contact
-from app.meta.events import InstagramComment, InstagramMessage, MetaEvent
+from app.meta.events import Comment, DirectMessage, MetaEvent
 from app.models import (
     Actor,
     AgentTrigger,
@@ -25,6 +25,7 @@ from app.models import (
     Message,
     Post,
 )
+from app.sanitize import clean_name
 
 
 class UnknownAccountError(LookupError):
@@ -35,36 +36,36 @@ async def ingest_event(
     session: AsyncSession, event: MetaEvent, *, simulated: bool = False
 ) -> ReplyRequest | None:
     match event:
-        case InstagramComment():
-            return await _ingest_instagram_comment(session, event, simulated)
-        case InstagramMessage():
-            return await _ingest_instagram_message(session, event, simulated)
+        case Comment():
+            return await _ingest_comment(session, event, simulated)
+        case DirectMessage():
+            return await _ingest_message(session, event, simulated)
 
 
-async def _business_for_instagram(session: AsyncSession, account_id: str) -> Business:
-    business = await session.scalar(select(Business).where(Business.ig_account_id == account_id))
+async def _business_for(session: AsyncSession, channel: Channel, account_id: str) -> Business:
+    column = Business.ig_account_id if channel == Channel.INSTAGRAM else Business.fb_page_id
+    business = await session.scalar(select(Business).where(column == account_id))
     if business is None:
+        kind = "Instagram account" if channel == Channel.INSTAGRAM else "Facebook Page"
         raise UnknownAccountError(
-            f"no business is connected to Instagram account {account_id} "
-            "(set it as the business's Instagram account id if it is yours)"
+            f"no business is connected to {kind} {account_id} "
+            f"(set it as the business's {kind} id if it is yours)"
         )
     return business
 
 
-async def _ingest_instagram_comment(
-    session: AsyncSession, event: InstagramComment, simulated: bool
-) -> ReplyRequest | None:
-    business = await _business_for_instagram(session, event.account_id)
+async def _ingest_comment(session: AsyncSession, event: Comment, simulated: bool) -> ReplyRequest | None:
+    business = await _business_for(session, event.channel, event.account_id)
     if event.from_id == event.account_id:
         return None  # the business replying under its own post is not a lead
     contact, identity = await upsert_contact(
-        session, business.id, Channel.INSTAGRAM, event.from_id, simulated=simulated
+        session, business.id, event.channel, event.from_id, simulated=simulated
     )
     await lock_contact(session, contact.id)
     post, _ = await get_or_create(
         session,
         Post,
-        {"business_id": business.id, "channel": Channel.INSTAGRAM, "external_id": event.media_id},
+        {"business_id": business.id, "channel": event.channel, "external_id": event.media_id},
     )
     inserted = await session.scalar(
         insert(Engagement)
@@ -72,7 +73,7 @@ async def _ingest_instagram_comment(
             business_id=business.id,
             contact_id=contact.id,
             post_id=post.id,
-            channel=Channel.INSTAGRAM,
+            channel=event.channel,
             kind=EngagementKind.COMMENT,
             external_id=event.comment_id,
             text=event.text,
@@ -84,25 +85,44 @@ async def _ingest_instagram_comment(
     if inserted is None:
         return None  # duplicate delivery
     remember_username(identity, event.from_username, event.occurred_at)
+    if event.from_name and not contact.display_name:
+        contact.display_name = clean_name(event.from_name) or None  # Facebook shows names, not handles
     record_activity(contact, event.occurred_at)
     await deals.deal_for_comment(
-        session, business_id=business.id, contact_id=contact.id, channel=Channel.INSTAGRAM, post=post
+        session, business_id=business.id, contact_id=contact.id, channel=event.channel, post=post
     )
-    return ReplyRequest(business.id, contact.id, AgentTrigger.COMMENT, engagement_id=inserted)
+    if event.is_thread_reply and await _privately_replied(session, contact.id, post.id):
+        return None  # "ok thanks!" under a comment we already answered in their DMs: not a new question
+    return ReplyRequest(
+        business.id, contact.id, AgentTrigger.COMMENT, engagement_id=inserted, channel=event.channel
+    )
 
 
-async def _ingest_instagram_message(
-    session: AsyncSession, event: InstagramMessage, simulated: bool
+async def _privately_replied(session: AsyncSession, contact_id: int, post_id: int) -> bool:
+    replied = await session.scalar(
+        select(Engagement.id)
+        .where(
+            Engagement.contact_id == contact_id,
+            Engagement.post_id == post_id,
+            Engagement.private_reply_at.is_not(None),
+        )
+        .limit(1)
+    )
+    return replied is not None
+
+
+async def _ingest_message(
+    session: AsyncSession, event: DirectMessage, simulated: bool
 ) -> ReplyRequest | None:
-    business = await _business_for_instagram(session, event.account_id)
+    business = await _business_for(session, event.channel, event.account_id)
     contact, _ = await upsert_contact(
-        session, business.id, Channel.INSTAGRAM, event.contact_external_id, simulated=simulated
+        session, business.id, event.channel, event.contact_external_id, simulated=simulated
     )
     await lock_contact(session, contact.id)
     conversation, _ = await get_or_create(
         session,
         Conversation,
-        {"business_id": business.id, "contact_id": contact.id, "channel": Channel.INSTAGRAM},
+        {"business_id": business.id, "contact_id": contact.id, "channel": event.channel},
     )
     inserted = await session.scalar(
         insert(Message)
@@ -126,13 +146,15 @@ async def _ingest_instagram_message(
         return None  # the business's own message: no lead progress
     if conversation.last_inbound_at is None or event.occurred_at > conversation.last_inbound_at:
         conversation.last_inbound_at = event.occurred_at
-    await _progress_deal_on_inbound_message(session, business.id, contact.id)
+    await _progress_deal_on_inbound_message(session, business.id, contact.id, event.channel)
     if event.standby:
         return None  # another app owns this thread (handover protocol): don't answer
-    return ReplyRequest(business.id, contact.id, AgentTrigger.DM)
+    return ReplyRequest(business.id, contact.id, AgentTrigger.DM, channel=event.channel)
 
 
-async def _progress_deal_on_inbound_message(session: AsyncSession, business_id: int, contact_id: int) -> None:
+async def _progress_deal_on_inbound_message(
+    session: AsyncSession, business_id: int, contact_id: int, channel: Channel
+) -> None:
     deal = await deals.latest_open_deal(session, contact_id)
     if deal is not None:
         if deal.stage == DealStage.NEW:
@@ -146,7 +168,7 @@ async def _progress_deal_on_inbound_message(session: AsyncSession, business_id: 
         session,
         business_id=business_id,
         contact_id=contact_id,
-        channel=Channel.INSTAGRAM,
+        channel=channel,
         stage=DealStage.ENGAGED,
         reason="the shopper sent a DM",
     )

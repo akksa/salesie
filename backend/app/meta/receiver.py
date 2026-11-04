@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agent.runner import ReplyRequest
 from app.crm.ingest import UnknownAccountError, ingest_event
-from app.meta.events import InstagramComment, MetaEvent, PayloadError, parse_meta_payload
+from app.meta.events import Comment, MetaEvent, PayloadError, parse_meta_payload
 from app.meta.signature import is_valid_signature
 from app.models import WebhookEvent, WebhookStatus
 from app.sanitize import clean_json
@@ -170,6 +170,6 @@ def _owner_visible_error(exc: Exception) -> str:
 
 
 def _describe(item: MetaEvent) -> str:
-    if isinstance(item, InstagramComment):
+    if isinstance(item, Comment):
         return f"comment {item.comment_id}"
     return f"message {item.message_id}"

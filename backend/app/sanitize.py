@@ -4,8 +4,16 @@ before anything is stored."""
 
 import math
 import re
+import unicodedata
 from collections.abc import Iterable
 from typing import Any
+
+
+def clean_name(value: str, limit: int = 100) -> str:
+    """A person's name from Meta: no control, format (e.g. right-to-left override) or private-use
+    characters, on one line, and bounded."""
+    visible = "".join(ch for ch in value if not unicodedata.category(ch).startswith("C"))
+    return " ".join(visible.split())[:limit]
 
 
 def clean_text(value: str) -> str:

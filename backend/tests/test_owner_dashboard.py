@@ -245,11 +245,11 @@ async def test_owner_can_reply_for_7_days_with_the_human_agent_tag(
 
 
 async def test_a_refused_send_stores_nothing(app: FastAPI, client: httpx.AsyncClient) -> None:
-    from app.channels.instagram import InstagramSendError
+    from app.channels.messaging import SendError
 
     class RefusingSender(SpySender):
         async def send_text(self, account_id, recipient, text, tag=None):  # type: ignore[no-untyped-def]
-            raise InstagramSendError("Instagram Send API 400: (#10) not allowed")
+            raise SendError("Instagram Send API 400: (#10) not allowed")
 
     await deliver(client, real_dm("m.1", "hi", at=datetime.now(UTC)))
     app.state.agent = dataclasses.replace(app.state.agent, live_sender=RefusingSender())
@@ -512,7 +512,7 @@ async def test_the_owner_can_privately_reply_to_a_shopper_who_only_commented(
 
 
 def test_owner_replies_are_tagged_a_little_before_24_hours_to_allow_for_clock_skew() -> None:
-    from app.channels.instagram import owner_route
+    from app.channels.messaging import owner_route
 
     now = datetime(2026, 11, 1, 12, tzinfo=UTC)
     early = owner_route(

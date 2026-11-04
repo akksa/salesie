@@ -11,6 +11,7 @@ from alembic import command
 from alembic.config import Config
 from dotenv import dotenv_values
 from fastapi import FastAPI
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 from sqlalchemy import text
 
 from app.config import ENV_FILE, Settings
@@ -31,6 +32,21 @@ def _test_database_url() -> str:
     return url
 
 
+class _IsolatedSettings(Settings):
+    """Only what a test passes in: never backend/.env or the shell's environment, which hold real keys."""
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (init_settings,)
+
+
 def make_settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {
         "database_url": _test_database_url(),
@@ -41,10 +57,12 @@ def make_settings(**overrides: Any) -> Settings:
         "simulator_enabled": True,
         "agent_enabled": False,  # ingestion tests run without the sales agent; agent tests opt in
         "llm_provider": "mock",
-        "instagram_access_token": None,
+        "instagram_access_token": None,  # tests never talk to the real Meta APIs, whatever .env holds
+        "facebook_page_access_token": None,
+        "allow_test_checkout_with_live_instagram": False,
         "public_base_url": "http://testserver",
     }
-    return Settings(**(values | overrides))
+    return _IsolatedSettings(**(values | overrides))
 
 
 @pytest.fixture(scope="session", autouse=True)

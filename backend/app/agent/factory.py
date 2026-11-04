@@ -3,7 +3,7 @@ from app.agent.llm import LLMClient
 from app.agent.mock_model import MockSalesModel
 from app.agent.muse import MuseClient
 from app.agent.runner import AgentServices
-from app.channels.instagram import GraphSender, RecordingSender
+from app.channels.messaging import GraphSender, RecordingSender
 from app.config import Settings
 from app.payments.checkout import HostedTestCheckout
 
@@ -25,6 +25,15 @@ def build_agent_services(settings: Settings) -> AgentServices:
         if settings.instagram_access_token is not None
         else None
     )
+    messenger_sender = (
+        GraphSender(
+            access_token=settings.facebook_page_access_token.get_secret_value(),
+            graph_url=settings.facebook_graph_url,
+            platform="messenger",
+        )
+        if settings.facebook_page_access_token is not None
+        else None
+    )
     return AgentServices(
         llm=llm,
         recorder=RecordingSender(),
@@ -34,5 +43,6 @@ def build_agent_services(settings: Settings) -> AgentServices:
             turns_per_contact_per_day=settings.agent_turns_per_contact_per_day,
         ),
         live_sender=live_sender,
+        messenger_sender=messenger_sender,
         enabled=settings.agent_enabled,
     )

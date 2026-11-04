@@ -27,7 +27,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
-        for client in (agent_services.llm, agent_services.live_sender):
+        for client in (agent_services.llm, agent_services.live_sender, agent_services.messenger_sender):
             if (close := getattr(client, "aclose", None)) is not None:
                 await close()
         await engine.dispose()
@@ -81,16 +81,19 @@ def _mount_frontend(app: FastAPI) -> None:
 
 
 class _HidePaymentTokens(logging.Filter):
-    """Payment link tokens are bearer secrets: keep them out of access logs."""
+    """Payment link tokens and Meta's webhook verify token are secrets: keep them out of access logs."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.args, tuple):
-            record.args = tuple(
-                _PAY_TOKEN.sub("/pay/[token]", a) if isinstance(a, str) else a for a in record.args
-            )
+            record.args = tuple(_hide_secrets(a) if isinstance(a, str) else a for a in record.args)
         return True
 
 
+def _hide_secrets(text: str) -> str:
+    return _VERIFY_TOKEN.sub(r"\1[token]", _PAY_TOKEN.sub("/pay/[token]", text))
+
+
 _PAY_TOKEN = re.compile(r"/pay/[A-Za-z0-9_-]+")
+_VERIFY_TOKEN = re.compile(r"(hub[._]verify_token=)[^&\s]+")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logging.getLogger("uvicorn.access").addFilter(_HidePaymentTokens())

@@ -12,7 +12,6 @@ from app.crm.store import lock_contact
 from app.models import (
     Actor,
     Business,
-    Channel,
     Contact,
     Conversation,
     Deal,
@@ -138,14 +137,13 @@ async def _cards(session: AsyncSession, board: Sequence[Deal]) -> list[PipelineC
     products = await _by_id(session, Product, {d.product_id for d in board if d.product_id})
     posts = await _by_id(session, Post, {d.source_post_id for d in board if d.source_post_id})
     contacts = await _by_id(session, Contact, contact_ids)
-    conversations = {
-        c.contact_id: c
-        for c in await session.scalars(
-            select(Conversation).where(
-                Conversation.contact_id.in_(contact_ids), Conversation.channel == Channel.INSTAGRAM
-            )
-        )
-    }
+    conversations: dict[int, Conversation] = {}
+    for c in await session.scalars(  # a contact's most recent conversation, on whichever channel
+        select(Conversation)
+        .where(Conversation.contact_id.in_(contact_ids))
+        .order_by(Conversation.last_message_at.asc().nulls_first(), Conversation.id)
+    ):
+        conversations[c.contact_id] = c
     latest = {
         m.conversation_id: m
         for m in await session.scalars(

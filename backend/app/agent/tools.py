@@ -69,7 +69,7 @@ class GetProductArgs(_Args):
 
 
 class NoteDetailsArgs(_Args):
-    details: dict[str, str] = Field(description='What you learned, e.g. {"size": "M", "ships_to": "Austin"}')
+    details: dict[str, str] = Field(description='What you learned, e.g. {"size": "M", "ships_to": "Pune"}')
     product_id: int | None = Field(
         default=None, ge=1, description="Which product's deal; default: the latest"
     )

@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.agent.runner import AgentServices
 from app.api.deps import BusinessDep, IdPath, SessionDep, require_owner
-from app.channels.instagram import InstagramSendError
+from app.channels.messaging import SendError
 from app.crm import pipeline as board
 from app.crm.insights import insights
 from app.crm.takeover import TakeoverBlockedError, send_owner_message
@@ -65,11 +65,9 @@ async def send_message(
     except TakeoverBlockedError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    except InstagramSendError as exc:  # rolled back: nothing claims the message was sent
+    except SendError as exc:  # rolled back: nothing claims the message was sent
         await session.rollback()
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY, f"Instagram didn't accept the message: {exc}"
-        ) from exc
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Meta didn't accept the message: {exc}") from exc
     return MessageOut.model_validate(message)
 
 
